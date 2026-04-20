@@ -13,6 +13,7 @@ followed by ``lexical_rank`` so LightGBM group sizes line up directly.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import os
 
 import pandas as pd
 from common.logging import get_logger
@@ -110,6 +111,8 @@ class BigQueryRankerRepository:
         git_sha: str | None = None,
         dataset_version: str | None = None,
     ) -> None:
+        self._log_vertex_experiment(run_id=run_id, metrics=metrics, hyperparams=hyperparams)
+
         row = {
             "run_id": run_id,
             "started_at": started_at.astimezone(timezone.utc).isoformat(),
@@ -138,6 +141,32 @@ class BigQueryRankerRepository:
         if errors:
             raise RuntimeError(f"BigQuery insert_rows_json failed: {errors}")
         logger.info("Recorded ranker run %s in %s", run_id, self._training_runs_table)
+
+    def _log_vertex_experiment(
+        self,
+        *,
+        run_id: str,
+        metrics: dict[str, float],
+        hyperparams: dict[str, object],
+    ) -> None:
+        experiment_name = os.getenv("VERTEX_EXPERIMENT_NAME", "").strip()
+        if not experiment_name:
+            return
+        try:
+            from google.cloud import aiplatform
+
+            aiplatform.init(project=self._project_id, experiment=experiment_name)
+            with aiplatform.start_run(run=run_id, resume=True):
+                aiplatform.log_params(dict(hyperparams))
+                aiplatform.log_metrics(
+                    {
+                        key: float(value)
+                        for key, value in metrics.items()
+                        if isinstance(value, int | float)
+                    }
+                )
+        except Exception:
+            logger.exception("Vertex Experiments logging failed for run %s", run_id)
 
     def latest_model_path(self) -> str | None:
         query = f"""

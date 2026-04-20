@@ -57,11 +57,14 @@ module "vertex" {
   reranker_endpoint_id        = var.vertex_reranker_endpoint_id
   encoder_endpoint_display_name  = "property-encoder-endpoint"
   reranker_endpoint_display_name = "property-reranker-endpoint"
+  retrain_trigger_topic_id    = module.runtime.retrain_trigger_topic.id
+  retrain_trigger_topic_name  = module.runtime.retrain_trigger_topic.name
 
   depends_on = [
     google_project_service.enabled,
     module.data,
     module.iam,
+    module.runtime,
   ]
 }
 
@@ -87,7 +90,6 @@ module "runtime" {
     google_project_service.enabled,
     module.data,
     module.meilisearch,
-    module.vertex,
   ]
 }
 

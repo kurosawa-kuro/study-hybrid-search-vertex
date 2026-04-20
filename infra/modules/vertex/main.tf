@@ -55,7 +55,10 @@ locals {
   )
   pipeline_trigger_function_name = "pipeline-trigger"
   pipeline_trigger_eventarc_name = "retrain-to-pipeline"
+  monitoring_trigger_eventarc_name = "monitoring-to-pipeline"
   pubsub_service_agent = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+  pipeline_template_uri = "gs://${var.pipeline_root_bucket_name}/templates/property-search-train.yaml"
+  pipeline_root_uri     = "gs://${var.pipeline_root_bucket_name}/runs"
 }
 
 data "google_project" "current" {
@@ -95,5 +98,125 @@ resource "google_pubsub_subscription" "monitoring_alerts_to_bq" {
   depends_on = [
     google_bigquery_dataset_iam_member.pubsub_mlops_editor,
     google_bigquery_dataset_iam_member.pubsub_mlops_metadata_viewer,
+  ]
+}
+
+data "archive_file" "pipeline_trigger_source" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../../functions/pipeline_trigger"
+  output_path = "${path.module}/.pipeline-trigger.zip"
+}
+
+resource "google_storage_bucket_object" "pipeline_trigger_zip" {
+  name   = "functions/pipeline-trigger-${data.archive_file.pipeline_trigger_source.output_md5}.zip"
+  bucket = var.pipeline_root_bucket_name
+  source = data.archive_file.pipeline_trigger_source.output_path
+}
+
+resource "google_cloudfunctions2_function" "pipeline_trigger" {
+  provider = google-beta
+
+  name     = local.pipeline_trigger_function_name
+  location = var.region
+
+  build_config {
+    runtime     = "python312"
+    entry_point = "trigger_pipeline"
+
+    source {
+      storage_source {
+        bucket = var.pipeline_root_bucket_name
+        object = google_storage_bucket_object.pipeline_trigger_zip.name
+      }
+    }
+  }
+
+  service_config {
+    available_memory      = "256M"
+    timeout_seconds       = 60
+    service_account_email = var.service_accounts.pipeline_trigger.email
+
+    environment_variables = {
+      PROJECT_ID               = var.project_id
+      VERTEX_LOCATION          = var.vertex_location
+      PIPELINE_TEMPLATE_URI    = local.pipeline_template_uri
+      PIPELINE_ROOT            = local.pipeline_root_uri
+      PIPELINE_SERVICE_ACCOUNT = var.service_accounts.pipeline.email
+      PIPELINE_ENABLE_CACHING  = "false"
+      PIPELINE_LABELS          = jsonencode({ component = "pipeline-trigger", managed_by = "terraform" })
+    }
+  }
+}
+
+resource "google_cloud_run_service_iam_member" "pipeline_trigger_invoker" {
+  location = var.region
+  service  = google_cloudfunctions2_function.pipeline_trigger.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${var.service_accounts.pipeline_trigger.email}"
+}
+
+resource "google_eventarc_trigger" "retrain_to_pipeline" {
+  provider = google-beta
+
+  name     = local.pipeline_trigger_eventarc_name
+  location = var.region
+
+  matching_criteria {
+    attribute = "type"
+    value     = "google.cloud.pubsub.topic.v1.messagePublished"
+  }
+
+  transport {
+    pubsub {
+      topic = var.retrain_trigger_topic_id
+    }
+  }
+
+  destination {
+    cloud_run_service {
+      service = google_cloudfunctions2_function.pipeline_trigger.name
+      region  = var.region
+      path    = "/"
+    }
+  }
+
+  service_account = var.service_accounts.pipeline_trigger.email
+
+  depends_on = [
+    google_cloudfunctions2_function.pipeline_trigger,
+    google_cloud_run_service_iam_member.pipeline_trigger_invoker,
+  ]
+}
+
+resource "google_eventarc_trigger" "monitoring_to_pipeline" {
+  provider = google-beta
+
+  name     = local.monitoring_trigger_eventarc_name
+  location = var.region
+
+  matching_criteria {
+    attribute = "type"
+    value     = "google.cloud.pubsub.topic.v1.messagePublished"
+  }
+
+  transport {
+    pubsub {
+      topic = google_pubsub_topic.model_monitoring_alerts.id
+    }
+  }
+
+  destination {
+    cloud_run_service {
+      service = google_cloudfunctions2_function.pipeline_trigger.name
+      region  = var.region
+      path    = "/"
+    }
+  }
+
+  service_account = var.service_accounts.pipeline_trigger.email
+
+  depends_on = [
+    google_cloudfunctions2_function.pipeline_trigger,
+    google_cloud_run_service_iam_member.pipeline_trigger_invoker,
   ]
 }

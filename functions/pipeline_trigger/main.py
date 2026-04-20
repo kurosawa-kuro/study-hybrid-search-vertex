@@ -65,7 +65,20 @@ def _merge_parameters(event_payload: dict[str, Any]) -> dict[str, Any]:
         parameters.update(event_params)
     if "reasons" in event_payload and "retrain_reasons" not in parameters:
         parameters["retrain_reasons"] = event_payload["reasons"]
+    source = _resolve_event_source(event_payload)
+    if "enable_tuning" not in parameters:
+        parameters["enable_tuning"] = source == "monitoring"
     return parameters
+
+
+def _resolve_event_source(event_payload: dict[str, Any]) -> str:
+    source = str(event_payload.get("source", "")).strip().lower()
+    if source in {"monitoring", "scheduler", "manual", "eventarc"}:
+        return source
+    reasons = event_payload.get("reasons")
+    if isinstance(reasons, list) and any("drift" in str(reason).lower() for reason in reasons):
+        return "monitoring"
+    return "scheduler"
 
 
 def _build_job_id(prefix: str) -> str:
@@ -74,7 +87,7 @@ def _build_job_id(prefix: str) -> str:
     return f"{prefix}-{timestamp}-{suffix}"
 
 
-def submit_pipeline(event: Mapping[str, Any] | None = None, context: Any | None = None) -> dict[str, Any]:
+def trigger_pipeline(event: Mapping[str, Any] | None = None, context: Any | None = None) -> dict[str, Any]:
     del context
 
     project = _env("PROJECT_ID")
@@ -107,3 +120,7 @@ def submit_pipeline(event: Mapping[str, Any] | None = None, context: Any | None 
         "parameter_values": parameter_values,
         "labels": labels,
     }
+
+
+def submit_pipeline(event: Mapping[str, Any] | None = None, context: Any | None = None) -> dict[str, Any]:
+    return trigger_pipeline(event=event, context=context)

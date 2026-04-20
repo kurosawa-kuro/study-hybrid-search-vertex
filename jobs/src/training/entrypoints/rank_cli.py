@@ -11,7 +11,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import shutil
 import tempfile
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -45,8 +47,17 @@ TrackerFactory = Callable[[str, Path], ExperimentTracker]
 TRAINING_WINDOW_DAYS: int = 90
 
 
+def _copy_if_requested(source: Path, destination: str | None) -> None:
+    if not destination:
+        return
+    target = Path(destination).expanduser()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(source, target)
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="LightGBM LambdaRank training job")
+    parser.add_argument("--mode", choices=["job", "kfp"], default="job")
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -63,6 +74,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=TRAINING_WINDOW_DAYS,
         help="How many days of ranking_log / feedback_events to train on (default: 90).",
     )
+    parser.add_argument("--train-dataset-uri", default=None)
+    parser.add_argument("--hyperparams-json", default=None)
+    parser.add_argument("--experiment-name", default=None)
+    parser.add_argument("--model-output-path", default=None)
+    parser.add_argument("--metrics-output-path", default=None)
+    parser.add_argument("--feature-importance-output-path", default=None)
     return parser.parse_args(argv)
 
 
@@ -154,6 +171,11 @@ def run(
     repository: RankerTrainingRepository | None = None,
     uploader: ArtifactUploader | None = None,
     tracker_factory: TrackerFactory | None = None,
+    hyperparams_override: dict[str, object] | None = None,
+    experiment_name: str | None = None,
+    model_output_path: str | None = None,
+    metrics_output_path: str | None = None,
+    feature_importance_output_path: str | None = None,
 ) -> str:
     """Execute one LambdaRank training run. Returns the saved model path (or local path on dry-run)."""
     configure_logging()
@@ -187,6 +209,11 @@ def run(
         min_data_in_leaf=settings.min_data_in_leaf,
         lambdarank_truncation_level=settings.lambdarank_truncation_level,
     )
+    if hyperparams_override:
+        params.update(hyperparams_override)
+
+    if experiment_name:
+        os.environ["VERTEX_EXPERIMENT_NAME"] = experiment_name
 
     build_tracker = tracker_factory or _default_tracker_factory(settings)
 
@@ -205,13 +232,13 @@ def run(
 
         artifacts = write_artifacts(result, output_dir=output_dir)
 
-        if save_to:
-            import shutil
+        _copy_if_requested(artifacts.model_path, model_output_path)
+        _copy_if_requested(output_dir / "metrics.json", metrics_output_path)
+        _copy_if_requested(output_dir / "feature_importance.csv", feature_importance_output_path)
 
-            target = Path(save_to).expanduser()
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy(artifacts.model_path, target)
-            logger.info("Copied model.txt to %s", target)
+        if save_to:
+            _copy_if_requested(artifacts.model_path, save_to)
+            logger.info("Copied model.txt to %s", Path(save_to).expanduser())
 
         if dry_run:
             logger.warning("dry-run: skipping GCS upload + BQ insert")
@@ -240,7 +267,19 @@ def run(
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     try:
-        run(dry_run=args.dry_run, save_to=args.save_to, window_days=args.window_days)
+        hyperparams_override = json.loads(args.hyperparams_json) if args.hyperparams_json else None
+        if hyperparams_override is not None and not isinstance(hyperparams_override, dict):
+            raise ValueError("--hyperparams-json must decode to an object")
+        run(
+            dry_run=args.dry_run,
+            save_to=args.save_to,
+            window_days=args.window_days,
+            hyperparams_override=hyperparams_override,
+            experiment_name=args.experiment_name,
+            model_output_path=args.model_output_path,
+            metrics_output_path=args.metrics_output_path,
+            feature_importance_output_path=args.feature_importance_output_path,
+        )
     except Exception:
         logger.exception("Ranker training job failed")
         return 1

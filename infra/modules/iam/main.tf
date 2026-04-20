@@ -163,6 +163,30 @@ resource "google_project_iam_member" "pipeline_trigger_aiplatform_user" {
   member  = "serviceAccount:${google_service_account.pipeline_trigger.email}"
 }
 
+resource "google_project_iam_member" "pipeline_trigger_eventarc_receiver" {
+  project = var.project_id
+  role    = "roles/eventarc.eventReceiver"
+  member  = "serviceAccount:${google_service_account.pipeline_trigger.email}"
+}
+
+resource "google_project_iam_member" "pipeline_trigger_pubsub_subscriber" {
+  project = var.project_id
+  role    = "roles/pubsub.subscriber"
+  member  = "serviceAccount:${google_service_account.pipeline_trigger.email}"
+}
+
+resource "google_project_iam_member" "pipeline_trigger_logging_writer" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.pipeline_trigger.email}"
+}
+
+resource "google_service_account_iam_member" "pipeline_trigger_can_use_pipeline_sa" {
+  service_account_id = google_service_account.pipeline.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.pipeline_trigger.email}"
+}
+
 resource "google_project_iam_member" "endpoint_encoder_logging_writer" {
   project = var.project_id
   role    = "roles/logging.logWriter"
@@ -175,10 +199,3 @@ resource "google_project_iam_member" "endpoint_reranker_logging_writer" {
   member  = "serviceAccount:${google_service_account.endpoint_reranker.email}"
 }
 
-# sa-scheduler must be able to start the training job (called from /events/retrain
-# which runs on search-api = sa-api). Kept here for locality with other project IAM.
-resource "google_project_iam_member" "scheduler_run_developer" {
-  project = var.project_id
-  role    = "roles/run.developer"
-  member  = "serviceAccount:${google_service_account.scheduler.email}"
-}

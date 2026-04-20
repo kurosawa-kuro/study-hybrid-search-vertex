@@ -17,6 +17,9 @@ REGION        ?= $(call _yaml_get,region)
 API_SERVICE   ?= $(call _yaml_get,api_service)
 TRAINING_JOB  ?= $(call _yaml_get,training_job)
 ARTIFACT_REPO ?= $(call _yaml_get,artifact_repo)
+VERTEX_LOCATION ?= $(call _yaml_get,vertex_location)
+PIPELINE_ROOT_BUCKET ?= $(call _yaml_get,pipeline_root_bucket)
+PIPELINE_TEMPLATE_GCS_PATH ?= $(call _yaml_get,pipeline_template_gcs_path)
 
 # Override-able via CLI: `make tf-plan GITHUB_REPO=other/repo ONCALL_EMAIL=...`
 GITHUB_REPO   ?= $(call _yaml_get,github_repo)
@@ -28,7 +31,7 @@ MODEL_PATH_OVERRIDE ?= /tmp/bq-first-smoke-model.txt
 # Scripts and their make-target wrappers must stay in lockstep — adding a new
 # target should usually mean adding a sibling script under scripts/ or
 # scripts/ops/ rather than inlining shell here.
-export PROJECT_ID REGION API_SERVICE TRAINING_JOB ARTIFACT_REPO
+export PROJECT_ID REGION API_SERVICE TRAINING_JOB ARTIFACT_REPO VERTEX_LOCATION PIPELINE_ROOT_BUCKET PIPELINE_TEMPLATE_GCS_PATH
 
 .PHONY: help doctor sync test lint fmt fmt-check typecheck check \
         check-layers sync-dataform-config \
@@ -39,7 +42,7 @@ export PROJECT_ID REGION API_SERVICE TRAINING_JOB ARTIFACT_REPO
         docker-auth deploy-api-local deploy-training-job-local \
         ops-api-url ops-daily ops-livez ops-search ops-ranking ops-feedback ops-enable-search \
         ops-skew-latest ops-search-volume ops-runs-recent \
-        ops-skew-run ops-train-now ops-reload-api \
+	ops-skew-run ops-train-now ops-pipeline-run ops-promote-reranker ops-reload-api \
         ops-check-retrain ops-bq-scan-top ops-label-seed
 
 help: ## Show this help
@@ -108,7 +111,7 @@ setup-model-monitoring: ## Print resolved Vertex Model Monitoring setup payload
 setup-pipeline-schedule: ## Print resolved Vertex Pipeline schedule setup payload
 	uv run python -m scripts.setup.create_schedule
 
-deploy-all: ## End-to-end provisioning + image rollout (tf-bootstrap → apply → deploy-api/training-job-local)
+deploy-all: ## End-to-end provisioning + search-api rollout (tf-bootstrap → apply → deploy-api-local)
 	uv run python -m scripts.setup.deploy_all
 
 destroy-all: ## Tear down every Terraform-managed resource (no prompt — PDCA loop, pair with deploy-all)
@@ -139,8 +142,8 @@ docker-auth: ## (Optional) configure local docker for Artifact Registry — not 
 deploy-api-local: ## Cloud Build + `gcloud run deploy` search-api
 	uv run python -m scripts.deploy.api_local
 
-deploy-training-job-local: ## Cloud Build + `gcloud run jobs update` training-job
-	uv run python -m scripts.deploy.training_job_local
+deploy-training-job-local: ## Deprecated: training moved to Vertex Pipelines
+	@echo "training-job は廃止済みです。make ops-train-now を使ってください。"
 
 # ----- Housekeeping -----
 
@@ -171,14 +174,20 @@ ops-skew-run: ## Ad-hoc execution of monitoring/validate_feature_skew.sql
 ops-bq-scan-top: ## Top 20 BQ scans in the last 7 days (cost audit)
 	bq query --use_legacy_sql=false --project_id=$(PROJECT_ID) < scripts/sql/bq_scan_top.sql
 
-ops-train-now: ## Force-run training-job and wait for completion
-	gcloud run jobs execute $(TRAINING_JOB) --project=$(PROJECT_ID) --region=$(REGION) --wait
+ops-train-now: ## Submit train pipeline to Vertex AI
+	uv run --package pipelines compile-pipelines --target train --output-dir dist/pipelines --submit --project-id $(PROJECT_ID) --location $(VERTEX_LOCATION) --pipeline-root gs://$(PIPELINE_ROOT_BUCKET)/runs --service-account sa-pipeline@$(PROJECT_ID).iam.gserviceaccount.com
+
+ops-pipeline-run: ## Submit a pipeline manually: TARGET=embed|train PARAM='key=value'
+	uv run --package pipelines compile-pipelines --target $${TARGET:-train} --output-dir dist/pipelines --submit --project-id $(PROJECT_ID) --location $(VERTEX_LOCATION) --pipeline-root gs://$(PIPELINE_ROOT_BUCKET)/runs --service-account sa-pipeline@$(PROJECT_ID).iam.gserviceaccount.com $${PARAM:+--parameter $$PARAM}
+
+ops-promote-reranker: ## Print or apply reranker promotion plan: VERSION=vN APPLY=1
+	uv run python -m scripts.ops.promote reranker $${VERSION:-v1} $${APPLY:+--apply}
 
 ops-reload-api: ## Bump FORCE_RELOAD env so search-api picks up the latest model
 	gcloud run services update $(API_SERVICE) --project=$(PROJECT_ID) --region=$(REGION) --update-env-vars="FORCE_RELOAD=$$(date +%s)"
 
-ops-enable-search: ## Flip search-api to ENABLE_SEARCH=true + ENCODER_MODEL_DIR=intfloat/multilingual-e5-base (runs lifespan encoder download, ~1 分)
-	gcloud run services update $(API_SERVICE) --project=$(PROJECT_ID) --region=$(REGION) --update-env-vars="ENABLE_SEARCH=true,ENCODER_MODEL_DIR=intfloat/multilingual-e5-base"
+ops-enable-search: ## Flip search-api to Vertex endpoint mode (set ENCODER_ENDPOINT_ID, optional RERANKER_ENDPOINT_ID)
+	gcloud run services update $(API_SERVICE) --project=$(PROJECT_ID) --region=$(REGION) --update-env-vars="ENABLE_SEARCH=true,ENABLE_RERANK=$${RERANKER_ENDPOINT_ID:+true},VERTEX_LOCATION=$(VERTEX_LOCATION),VERTEX_ENCODER_ENDPOINT_ID=$${ENCODER_ENDPOINT_ID:?set ENCODER_ENDPOINT_ID},VERTEX_RERANKER_ENDPOINT_ID=$${RERANKER_ENDPOINT_ID:-}"
 
 ops-livez: ## Hit /livez on the deployed search-api (IAM-gated)
 	uv run python -m scripts.ops.livez_check

@@ -59,3 +59,13 @@ variable "reranker_endpoint_display_name" {
   description = "Display name reserved for the reranker endpoint"
   type        = string
 }
+
+variable "retrain_trigger_topic_id" {
+  description = "Pub/Sub topic ID for retrain-trigger events emitted by search-api"
+  type        = string
+}
+
+variable "retrain_trigger_topic_name" {
+  description = "Pub/Sub topic name for retrain-trigger events emitted by search-api"
+  type        = string
+}

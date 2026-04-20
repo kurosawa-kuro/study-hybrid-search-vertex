@@ -97,6 +97,11 @@ output "pipeline_trigger_eventarc_name" {
   value       = module.vertex.pipeline_trigger_eventarc_name
 }
 
+output "monitoring_trigger_eventarc_name" {
+  description = "Eventarc trigger name for monitoring-to-pipeline wiring"
+  value       = module.vertex.monitoring_trigger_eventarc_name
+}
+
 output "workload_identity_provider" {
   description = "Register as GitHub Actions var WORKLOAD_IDENTITY_PROVIDER"
   value       = module.iam.workload_identity_provider

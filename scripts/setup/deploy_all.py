@@ -10,11 +10,9 @@
 5. `tf_plan` — terraform plan -out=tfplan (using setting.yaml defaults)
 6. `terraform apply tfplan -auto-approve` — apply infra
 7. `deploy/api_local` — Cloud Build + gcloud run deploy search-api
-8. `deploy/training_job_local` — Cloud Build + gcloud run jobs update training-job
 
 Idempotent — re-running on an already-provisioned project applies a zero-diff
-plan and rolls a fresh image revision (search-api / training-job get a new
-git-sha tag). Costs accrue from the moment infra is created (Cloud Run
+plan and rolls a fresh search-api image revision. Costs accrue from the moment infra is created (Cloud Run
 min-instances=1, BQ storage, etc.) — see CLAUDE.md non-negotiables.
 """
 
@@ -26,7 +24,6 @@ from pathlib import Path
 from scripts._common import env, run
 from scripts.config.sync_dataform import main as sync_dataform_main
 from scripts.deploy.api_local import main as deploy_api_main
-from scripts.deploy.training_job_local import main as deploy_training_main
 from scripts.setup.tf_bootstrap import main as tf_bootstrap_main
 from scripts.setup.tf_init import main as tf_init_main
 from scripts.setup.tf_plan import main as tf_plan_main
@@ -167,7 +164,7 @@ def _recover_wif_state(project_id: str) -> None:
 
 
 def main() -> int:
-    total = 8
+    total = 7
     project_id = env("PROJECT_ID")
 
     _step(1, total, "tf-bootstrap (enable APIs + tfstate bucket, idempotent)")
@@ -196,13 +193,10 @@ def main() -> int:
     if (rc := deploy_api_main()) != 0:
         return rc
 
-    _step(8, total, "deploy-training-job-local (Cloud Build + run jobs update)")
-    if (rc := deploy_training_main()) != 0:
-        return rc
-
     print()
     print("==> deploy-all complete.")
     print("    Verify with: make ops-livez && make ops-api-url")
+    print("    Pipeline submit is separate: make ops-train-now")
     return 0
 
 

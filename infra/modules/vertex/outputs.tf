@@ -29,11 +29,16 @@ output "monitoring_alerts_subscription" {
 }
 
 output "pipeline_trigger_function_name" {
-  description = "Reserved Cloud Function name for the Vertex pipeline trigger"
-  value       = local.pipeline_trigger_function_name
+  description = "Cloud Function name for the Vertex pipeline trigger"
+  value       = google_cloudfunctions2_function.pipeline_trigger.name
 }
 
 output "pipeline_trigger_eventarc_name" {
-  description = "Reserved Eventarc trigger name for retrain-to-pipeline wiring"
-  value       = local.pipeline_trigger_eventarc_name
+  description = "Eventarc trigger name for retrain-to-pipeline wiring"
+  value       = google_eventarc_trigger.retrain_to_pipeline.name
+}
+
+output "monitoring_trigger_eventarc_name" {
+  description = "Eventarc trigger name for monitoring-to-pipeline wiring"
+  value       = google_eventarc_trigger.monitoring_to_pipeline.name
 }
