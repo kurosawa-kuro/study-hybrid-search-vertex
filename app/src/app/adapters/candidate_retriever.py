@@ -69,7 +69,9 @@ class BigQueryCandidateRetriever:
         top_k: int,
     ) -> list[Candidate]:
         lexical_results = self._lexical.search(query=query_text, filters=filters, top_k=200)
-        semantic_results = self._semantic_search(query_vector=query_vector, filters=filters, top_k=200)
+        semantic_results = self._semantic_search(
+            query_vector=query_vector, filters=filters, top_k=200
+        )
 
         semantic_rank_pairs = [(pid, rank) for pid, rank, _ in semantic_results]
         fused_ids = rrf_fuse(

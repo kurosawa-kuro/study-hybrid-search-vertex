@@ -158,11 +158,12 @@ def test_readyz_reports_rerank_enabled_when_client_set(app_with_search_stub) -> 
     from fastapi.testclient import TestClient
 
     class _StubReranker:
+        model_path = "projects/p/locations/l/endpoints/123"
+
         def predict(self, instances: list[list[float]]) -> list[float]:
             return [-row[8] for row in instances]
 
     app_with_search_stub.state.reranker_client = _StubReranker()
-    app_with_search_stub.state.model_path = "projects/p/locations/l/endpoints/123"
     client = TestClient(app_with_search_stub)
     body = client.get("/readyz").json()
     assert body["rerank_enabled"] is True
@@ -173,11 +174,12 @@ def test_search_returns_scores_when_reranker_loaded(app_with_search_stub) -> Non
     from fastapi.testclient import TestClient
 
     class _StubReranker:
+        model_path = "projects/p/locations/l/endpoints/456"
+
         def predict(self, instances: list[list[float]]) -> list[float]:
             return [-row[8] for row in instances]
 
     app_with_search_stub.state.reranker_client = _StubReranker()
-    app_with_search_stub.state.model_path = "projects/p/locations/l/endpoints/456"
 
     client = TestClient(app_with_search_stub)
     r = client.post("/search", json=_search_payload())
@@ -192,11 +194,12 @@ def test_ranking_log_receives_scores_when_reranker_loaded(app_with_search_stub) 
     from fastapi.testclient import TestClient
 
     class _StubReranker:
+        model_path = "projects/p/locations/l/endpoints/789"
+
         def predict(self, instances: list[list[float]]) -> list[float]:
             return [-row[8] for row in instances]
 
     app_with_search_stub.state.reranker_client = _StubReranker()
-    app_with_search_stub.state.model_path = "projects/p/locations/l/endpoints/789"
     client = TestClient(app_with_search_stub)
     client.post("/search", json=_search_payload())
     publisher = app_with_search_stub.state.ranking_log_publisher

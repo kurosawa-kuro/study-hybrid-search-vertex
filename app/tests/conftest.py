@@ -16,6 +16,13 @@ class _StubEncoderClient:
         return [1.0, 0.0, 0.0, 0.0]
 
 
+class _StubRerankerClient:
+    model_path = "projects/p/locations/l/endpoints/stub"
+
+    def predict(self, instances: list[list[float]]) -> list[float]:
+        return [-row[8] for row in instances]
+
+
 class _StubCandidateRetriever:
     def __init__(self):
         self.calls: list[dict] = []

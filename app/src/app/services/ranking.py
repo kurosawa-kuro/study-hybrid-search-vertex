@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
 from typing import Any
 
 from common.feature_engineering import build_ranker_features
@@ -26,6 +27,13 @@ from ..ports.reranker_client import RerankerClient
 
 RRF_K: int = 60
 DEFAULT_SEARCH_CACHE_TTL_SECONDS: int = 120
+
+
+@dataclass(frozen=True)
+class RankedCandidate:
+    candidate: Candidate
+    final_rank: int
+    score: float | None
 
 
 def _score_candidates(candidates: list[Candidate], reranker: RerankerClient) -> list[float]:
@@ -54,8 +62,8 @@ def run_search(
     top_k: int,
     reranker: RerankerClient | None = None,
     model_path: str | None = None,
-) -> list[tuple[Candidate, int]]:
-    """Execute one search and return ``[(candidate, final_rank), ...]`` truncated to top_k.
+) -> list[RankedCandidate]:
+    """Execute one search and return ranked candidates truncated to top_k.
 
     If ``reranker`` is ``None`` the fallback path kicks in.
     Either way, ranking_log receives one row per retrieved candidate (not just
@@ -82,20 +90,25 @@ def run_search(
         # Stable descending sort; higher score wins. Ties preserve lexical order
         # because ``sorted`` is stable and candidates are already lexically ordered.
         order = sorted(range(len(candidates)), key=lambda i: -scores[i])
-        ranked = [(candidates[i], rank + 1) for rank, i in enumerate(order)]
+        final_rank_by_index = {i: rank + 1 for rank, i in enumerate(order)}
         # publish in lexical (original) order so ranking_log matches the
         # candidates' `lexical_rank` column 1:1.
         scores_nullable: list[float | None] = list(scores)
         publisher.publish_candidates(
             request_id=request_id,
             candidates=candidates,
-            final_ranks=[
-                next(rank for cand, rank in ranked if cand.property_id == c.property_id)
-                for c in candidates
-            ],
+            final_ranks=[final_rank_by_index[i] for i in range(len(candidates))],
             scores=scores_nullable,
             model_path=model_path,
         )
+        ranked = [
+            RankedCandidate(
+                candidate=candidates[i],
+                final_rank=final_rank_by_index[i],
+                score=scores[i],
+            )
+            for i in order
+        ]
         return ranked[:top_k]
 
     # Fallback: rerank disabled or reranker missing.
@@ -107,9 +120,12 @@ def run_search(
         scores=[None] * len(candidates),
         model_path=None,
     )
-    paired = list(zip(candidates, final_ranks, strict=True))
-    paired.sort(key=lambda cr: cr[1])
-    return paired[:top_k]
+    ranked = [
+        RankedCandidate(candidate=candidate, final_rank=final_rank, score=None)
+        for candidate, final_rank in zip(candidates, final_ranks, strict=True)
+    ]
+    ranked.sort(key=lambda item: item.final_rank)
+    return ranked[:top_k]
 
 
 def normalize_search_cache_key(*, query: str, filters: dict[str, Any], top_k: int) -> str:

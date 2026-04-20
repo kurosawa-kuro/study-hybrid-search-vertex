@@ -18,6 +18,7 @@ class ApiSettings(BaseAppSettings):
     meili_require_identity_token: bool = True
     vertex_location: str = "asia-northeast1"
     vertex_encoder_endpoint_id: str = ""
+    vertex_predict_timeout_seconds: float = 30.0
 
     # --- Phase 6 /search rerank (optional bolt-on) ---------------------------
     # When False, /search returns candidates in lexical_rank order with score=None.

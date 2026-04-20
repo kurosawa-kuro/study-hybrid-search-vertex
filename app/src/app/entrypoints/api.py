@@ -129,6 +129,7 @@ def _build_encoder_client(settings: ApiSettings) -> tuple[EncoderClient | None, 
             project_id=settings.project_id,
             location=settings.vertex_location,
             endpoint_id=settings.vertex_encoder_endpoint_id,
+            timeout_seconds=settings.vertex_predict_timeout_seconds,
         )
     except Exception:
         logger.exception("Failed to initialize Vertex encoder endpoint client")
@@ -148,6 +149,7 @@ def _build_reranker_client(settings: ApiSettings) -> tuple[RerankerClient | None
             project_id=settings.project_id,
             location=settings.vertex_location,
             endpoint_id=settings.vertex_reranker_endpoint_id,
+            timeout_seconds=settings.vertex_predict_timeout_seconds,
         )
     except Exception:
         logger.exception("Failed to initialize Vertex reranker endpoint client")
@@ -232,7 +234,7 @@ def create_app() -> FastAPI:
                 "status": "ready",
                 "search_enabled": True,
                 "rerank_enabled": reranker is not None,
-                "model_path": getattr(request.app.state, "model_path", None),
+                "model_path": getattr(reranker, "model_path", None),
             }
         )
 
@@ -266,8 +268,8 @@ def create_app() -> FastAPI:
 
         publisher: RankingLogPublisher = request.app.state.ranking_log_publisher
         reranker = getattr(request.app.state, "reranker_client", None)
-        model_path = getattr(request.app.state, "model_path", None)
-        pairs = run_search(
+        model_path = getattr(reranker, "model_path", getattr(request.app.state, "model_path", None))
+        ranked = run_search(
             retriever=retriever,
             publisher=publisher,
             request_id=request_id,
@@ -279,32 +281,16 @@ def create_app() -> FastAPI:
             model_path=model_path,
         )
 
-        # Rebuild the per-candidate score lookup so SearchResultItem can carry it.
-        # (run_search returns the ranked tuple list; the score list was emitted
-        # to the publisher in lexical order.)
-        score_by_id: dict[str, float] = {}
-        if reranker is not None:
-            # Recompute scores for the truncated pairs — cheap (top_k ≤ 100) and
-            # avoids threading a second list back through run_search.
-            from ..services.ranking import _score_candidates
-
-            returned_candidates = [cand for cand, _ in pairs]
-            if returned_candidates:
-                scores = _score_candidates(returned_candidates, reranker)
-                score_by_id = {
-                    c.property_id: s for c, s in zip(returned_candidates, scores, strict=True)
-                }
-
         results = [
             SearchResultItem(
-                property_id=cand.property_id,
-                final_rank=final_rank,
-                lexical_rank=cand.lexical_rank,
-                semantic_rank=cand.semantic_rank,
-                me5_score=cand.me5_score,
-                score=score_by_id.get(cand.property_id),
+                property_id=item.candidate.property_id,
+                final_rank=item.final_rank,
+                lexical_rank=item.candidate.lexical_rank,
+                semantic_rank=item.candidate.semantic_rank,
+                me5_score=item.candidate.me5_score,
+                score=item.score,
             )
-            for cand, final_rank in pairs
+            for item in ranked
         ]
         search_cache.set(
             cache_key,

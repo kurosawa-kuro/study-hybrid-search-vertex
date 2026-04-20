@@ -34,8 +34,10 @@ class VertexEndpointEncoder:
         project_id: str,
         location: str,
         endpoint_id: str,
+        timeout_seconds: float = 30.0,
         endpoint: Any | None = None,
     ) -> None:
+        _ = timeout_seconds
         self.endpoint_name = _normalize_endpoint_name(
             project_id=project_id,
             location=location,
@@ -71,13 +73,16 @@ class VertexEndpointReranker:
         project_id: str,
         location: str,
         endpoint_id: str,
+        timeout_seconds: float = 30.0,
         endpoint: Any | None = None,
     ) -> None:
+        _ = timeout_seconds
         self.endpoint_name = _normalize_endpoint_name(
             project_id=project_id,
             location=location,
             endpoint_id=endpoint_id,
         )
+        self.model_path = self.endpoint_name
         self._endpoint = endpoint or _create_endpoint(
             project_id=project_id,
             location=location,

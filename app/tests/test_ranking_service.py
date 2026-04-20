@@ -91,8 +91,8 @@ def test_run_search_preserves_lexical_order() -> None:
         filters={"max_rent": 150_000},
         top_k=3,
     )
-    assert [c.property_id for c, _ in out] == ["P-001", "P-002", "P-003"]
-    assert [rank for _, rank in out] == [1, 2, 3]
+    assert [item.candidate.property_id for item in out] == ["P-001", "P-002", "P-003"]
+    assert [item.final_rank for item in out] == [1, 2, 3]
 
 
 def test_run_search_final_rank_equals_lexical_rank_without_reranker() -> None:
@@ -183,8 +183,8 @@ def test_run_search_rerank_reverses_order_when_reranker_says_so() -> None:
         reranker=_StubReranker(),
         model_path="projects/p/locations/l/endpoints/123",
     )
-    assert [c.property_id for c, _ in out] == ["P-001", "P-002", "P-003", "P-004"]
-    assert [rank for _, rank in out] == [1, 2, 3, 4]
+    assert [item.candidate.property_id for item in out] == ["P-001", "P-002", "P-003", "P-004"]
+    assert [item.final_rank for item in out] == [1, 2, 3, 4]
     call = publisher.calls[0]
     assert [c.property_id for c in call["candidates"]] == ["P-001", "P-002", "P-003", "P-004"]
     assert all(isinstance(s, float) for s in call["scores"])
@@ -231,5 +231,5 @@ def test_run_search_rerank_with_higher_score_wins() -> None:
         reranker=_ForceWinReranker(),
         model_path="projects/p/locations/l/endpoints/999",
     )
-    assert out[0][0].property_id == "P-001"
-    assert out[0][1] == 1
+    assert out[0].candidate.property_id == "P-001"
+    assert out[0].final_rank == 1
