@@ -26,6 +26,7 @@ module "data" {
   region                            = var.region
   artifact_repo_id                  = var.artifact_repo_id
   models_bucket_name                = var.models_bucket_name
+  pipeline_root_bucket_name         = var.pipeline_root_bucket_name
   artifacts_bucket_name             = var.artifacts_bucket_name
   service_accounts                  = module.iam.service_accounts
   github_repo                       = var.github_repo
@@ -39,6 +40,29 @@ module "data" {
   enable_deletion_protection = var.enable_deletion_protection
 
   depends_on = [google_project_service.enabled]
+}
+
+module "vertex" {
+  source = "./modules/vertex"
+
+  project_id                  = var.project_id
+  region                      = var.region
+  vertex_location             = var.vertex_location
+  service_accounts            = module.iam.service_accounts
+  mlops_dataset_id            = module.data.mlops_dataset.dataset_id
+  feature_mart_dataset_id     = module.data.feature_mart_dataset.dataset_id
+  pipeline_root_bucket_name   = module.data.pipeline_root_bucket.name
+  model_monitoring_alerts_table_id = module.data.model_monitoring_alerts_table.table_id
+  encoder_endpoint_id         = var.vertex_encoder_endpoint_id
+  reranker_endpoint_id        = var.vertex_reranker_endpoint_id
+  encoder_endpoint_display_name  = "property-encoder-endpoint"
+  reranker_endpoint_display_name = "property-reranker-endpoint"
+
+  depends_on = [
+    google_project_service.enabled,
+    module.data,
+    module.iam,
+  ]
 }
 
 module "runtime" {
@@ -63,6 +87,7 @@ module "runtime" {
     google_project_service.enabled,
     module.data,
     module.meilisearch,
+    module.vertex,
   ]
 }
 

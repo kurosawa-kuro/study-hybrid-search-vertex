@@ -25,6 +25,26 @@ resource "google_service_account" "scheduler" {
   display_name = "Cloud Scheduler SA (invoke API / publish retrain trigger)"
 }
 
+resource "google_service_account" "pipeline" {
+  account_id   = "sa-pipeline"
+  display_name = "Vertex AI Pipelines runtime SA"
+}
+
+resource "google_service_account" "endpoint_encoder" {
+  account_id   = "sa-endpoint-encoder"
+  display_name = "Vertex AI encoder endpoint runtime SA"
+}
+
+resource "google_service_account" "endpoint_reranker" {
+  account_id   = "sa-endpoint-reranker"
+  display_name = "Vertex AI reranker endpoint runtime SA"
+}
+
+resource "google_service_account" "pipeline_trigger" {
+  account_id   = "sa-pipeline-trigger"
+  display_name = "Vertex pipeline trigger runtime SA"
+}
+
 # ----- Workload Identity Federation for GitHub Actions -----
 
 resource "google_iam_workload_identity_pool" "github" {
@@ -83,6 +103,12 @@ resource "google_project_iam_member" "api_bq_job_user" {
   member  = "serviceAccount:${google_service_account.api.email}"
 }
 
+resource "google_project_iam_member" "api_aiplatform_user" {
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.api.email}"
+}
+
 resource "google_project_iam_member" "train_bq_job_user" {
   project = var.project_id
   role    = "roles/bigquery.jobUser"
@@ -111,6 +137,42 @@ resource "google_project_iam_member" "dataform_bq_job_user" {
   project = var.project_id
   role    = "roles/bigquery.jobUser"
   member  = "serviceAccount:${google_service_account.dataform.email}"
+}
+
+resource "google_project_iam_member" "pipeline_bq_job_user" {
+  project = var.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${google_service_account.pipeline.email}"
+}
+
+resource "google_project_iam_member" "pipeline_bq_read_session" {
+  project = var.project_id
+  role    = "roles/bigquery.readSessionUser"
+  member  = "serviceAccount:${google_service_account.pipeline.email}"
+}
+
+resource "google_project_iam_member" "pipeline_aiplatform_user" {
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.pipeline.email}"
+}
+
+resource "google_project_iam_member" "pipeline_trigger_aiplatform_user" {
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.pipeline_trigger.email}"
+}
+
+resource "google_project_iam_member" "endpoint_encoder_logging_writer" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.endpoint_encoder.email}"
+}
+
+resource "google_project_iam_member" "endpoint_reranker_logging_writer" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.endpoint_reranker.email}"
 }
 
 # sa-scheduler must be able to start the training job (called from /events/retrain

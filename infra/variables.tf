@@ -18,6 +18,12 @@ variable "models_bucket_name" {
   default = "mlops-dev-a-models"
 }
 
+variable "pipeline_root_bucket_name" {
+  description = "GCS bucket name for Vertex AI pipeline root artifacts and compiled templates"
+  type        = string
+  default     = "mlops-dev-a-pipeline-root"
+}
+
 variable "meili_data_bucket_name" {
   description = "GCS bucket name mounted by meili-search"
   type        = string

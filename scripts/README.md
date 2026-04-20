@@ -49,6 +49,8 @@ scripts/
     tf_bootstrap.py                  ← `make tf-bootstrap`
     tf_init.py                       ← `make tf-init`
     tf_plan.py                       ← `make tf-plan`
+    create_schedule.py               ← Vertex Pipeline schedule 設定の雛形
+    setup_model_monitoring.py        ← Vertex Model Monitoring 設定の雛形
   deploy/                            ← Cloud Build + Cloud Run rollout (CI 不在時の手動 deploy)
     api_local.py                     ← `make deploy-api-local`
     training_job_local.py            ← `make deploy-training-job-local`

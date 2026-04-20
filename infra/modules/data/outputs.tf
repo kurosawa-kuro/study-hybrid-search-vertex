@@ -18,6 +18,10 @@ output "validation_results_table" {
   value = google_bigquery_table.validation_results
 }
 
+output "model_monitoring_alerts_table" {
+  value = google_bigquery_table.model_monitoring_alerts
+}
+
 output "property_features_daily_table" {
   value = google_bigquery_table.property_features_daily
 }
@@ -44,6 +48,10 @@ output "models_bucket" {
 
 output "artifacts_bucket" {
   value = google_storage_bucket.artifacts
+}
+
+output "pipeline_root_bucket" {
+  value = google_storage_bucket.pipeline_root
 }
 
 output "artifact_registry" {

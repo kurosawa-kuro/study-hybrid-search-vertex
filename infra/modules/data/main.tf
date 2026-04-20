@@ -258,6 +258,27 @@ resource "google_bigquery_table" "validation_results" {
   ])
 }
 
+resource "google_bigquery_table" "model_monitoring_alerts" {
+  dataset_id          = google_bigquery_dataset.mlops.dataset_id
+  table_id            = "model_monitoring_alerts"
+  deletion_protection = var.enable_deletion_protection
+
+  time_partitioning {
+    type  = "DAY"
+    field = "alert_time"
+  }
+
+  schema = jsonencode([
+    { name = "alert_time", type = "TIMESTAMP", mode = "REQUIRED" },
+    { name = "model_resource_name", type = "STRING", mode = "NULLABLE" },
+    { name = "drift_metric", type = "STRING", mode = "NULLABLE" },
+    { name = "feature_name", type = "STRING", mode = "NULLABLE" },
+    { name = "score", type = "FLOAT64", mode = "NULLABLE" },
+    { name = "threshold", type = "FLOAT64", mode = "NULLABLE" },
+    { name = "payload", type = "JSON", mode = "NULLABLE" },
+  ])
+}
+
 # =========================================================================
 # GCS — model artifacts + general-purpose artifacts
 # =========================================================================
@@ -295,6 +316,23 @@ resource "google_storage_bucket" "artifacts" {
     }
     action {
       type = "Delete"
+    }
+  }
+}
+
+resource "google_storage_bucket" "pipeline_root" {
+  name                        = var.pipeline_root_bucket_name
+  location                    = var.region
+  uniform_bucket_level_access = true
+  force_destroy               = false
+
+  lifecycle_rule {
+    condition {
+      age = 30
+    }
+    action {
+      type          = "SetStorageClass"
+      storage_class = "NEARLINE"
     }
   }
 }
@@ -379,6 +417,12 @@ resource "google_storage_bucket_iam_member" "train_models_admin" {
   member = "serviceAccount:${var.service_accounts.job_train.email}"
 }
 
+resource "google_storage_bucket_iam_member" "train_pipeline_root_admin" {
+  bucket = google_storage_bucket.pipeline_root.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${var.service_accounts.job_train.email}"
+}
+
 resource "google_secret_manager_secret_iam_member" "job_train_doppler_access" {
   secret_id = google_secret_manager_secret.doppler_token.id
   role      = "roles/secretmanager.secretAccessor"
@@ -411,6 +455,42 @@ resource "google_storage_bucket_iam_member" "embed_models_viewer" {
   bucket = google_storage_bucket.models.name
   role   = "roles/storage.objectViewer"
   member = "serviceAccount:${var.service_accounts.job_embed.email}"
+}
+
+resource "google_bigquery_dataset_iam_member" "pipeline_feature_viewer" {
+  dataset_id = google_bigquery_dataset.feature_mart.dataset_id
+  role       = "roles/bigquery.dataViewer"
+  member     = "serviceAccount:${var.service_accounts.pipeline.email}"
+}
+
+resource "google_bigquery_dataset_iam_member" "pipeline_mlops_editor" {
+  dataset_id = google_bigquery_dataset.mlops.dataset_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${var.service_accounts.pipeline.email}"
+}
+
+resource "google_storage_bucket_iam_member" "pipeline_models_admin" {
+  bucket = google_storage_bucket.models.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${var.service_accounts.pipeline.email}"
+}
+
+resource "google_storage_bucket_iam_member" "pipeline_root_pipeline_admin" {
+  bucket = google_storage_bucket.pipeline_root.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${var.service_accounts.pipeline.email}"
+}
+
+resource "google_storage_bucket_iam_member" "endpoint_encoder_models_viewer" {
+  bucket = google_storage_bucket.models.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${var.service_accounts.endpoint_encoder.email}"
+}
+
+resource "google_storage_bucket_iam_member" "endpoint_reranker_models_viewer" {
+  bucket = google_storage_bucket.models.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${var.service_accounts.endpoint_reranker.email}"
 }
 
 # sa-dataform: feature_mart editor.

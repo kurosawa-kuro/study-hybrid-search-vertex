@@ -10,6 +10,11 @@ output "models_bucket" {
   value = module.data.models_bucket.name
 }
 
+output "pipeline_root_bucket" {
+  description = "GCS bucket used as Vertex AI pipeline root"
+  value       = module.data.pipeline_root_bucket.name
+}
+
 output "artifact_registry" {
   value = "${var.region}-docker.pkg.dev/${var.project_id}/${module.data.artifact_registry.repository_id}"
 }
@@ -26,6 +31,11 @@ output "feedback_events_table" {
   value = "${var.project_id}.${module.data.mlops_dataset.dataset_id}.${module.data.feedback_events_table.table_id}"
 }
 
+output "model_monitoring_alerts_table" {
+  description = "BigQuery sink for Vertex model monitoring alerts"
+  value       = "${var.project_id}.${module.data.mlops_dataset.dataset_id}.${module.data.model_monitoring_alerts_table.table_id}"
+}
+
 output "ranking_log_topic" {
   value = module.runtime.ranking_log_topic.name
 }
@@ -40,12 +50,51 @@ output "retrain_trigger_topic" {
 
 output "service_accounts" {
   value = {
-    api       = module.iam.service_accounts.api.email
-    job_train = module.iam.service_accounts.job_train.email
-    job_embed = module.iam.service_accounts.job_embed.email
-    dataform  = module.iam.service_accounts.dataform.email
-    scheduler = module.iam.service_accounts.scheduler.email
+    api               = module.iam.service_accounts.api.email
+    job_train         = module.iam.service_accounts.job_train.email
+    job_embed         = module.iam.service_accounts.job_embed.email
+    dataform          = module.iam.service_accounts.dataform.email
+    scheduler         = module.iam.service_accounts.scheduler.email
+    pipeline          = module.iam.service_accounts.pipeline.email
+    endpoint_encoder  = module.iam.service_accounts.endpoint_encoder.email
+    endpoint_reranker = module.iam.service_accounts.endpoint_reranker.email
+    pipeline_trigger  = module.iam.service_accounts.pipeline_trigger.email
   }
+}
+
+output "vertex_encoder_endpoint_name" {
+  description = "Resolved Vertex encoder endpoint resource name placeholder"
+  value       = module.vertex.encoder_endpoint_name
+}
+
+output "vertex_reranker_endpoint_name" {
+  description = "Resolved Vertex reranker endpoint resource name placeholder"
+  value       = module.vertex.reranker_endpoint_name
+}
+
+output "vertex_feature_group_property_features" {
+  description = "Canonical property-side feature declarations for the Vertex Feature Group scaffold"
+  value       = module.vertex.feature_group_property_features
+}
+
+output "model_monitoring_alerts_topic" {
+  description = "Pub/Sub topic for Vertex model monitoring alerts"
+  value       = module.vertex.model_monitoring_alerts_topic.name
+}
+
+output "model_monitoring_alerts_subscription" {
+  description = "BigQuery subscription for Vertex model monitoring alerts"
+  value       = module.vertex.monitoring_alerts_subscription.name
+}
+
+output "pipeline_trigger_function_name" {
+  description = "Reserved Cloud Function name for the Vertex pipeline trigger"
+  value       = module.vertex.pipeline_trigger_function_name
+}
+
+output "pipeline_trigger_eventarc_name" {
+  description = "Reserved Eventarc trigger name for retrain-to-pipeline wiring"
+  value       = module.vertex.pipeline_trigger_eventarc_name
 }
 
 output "workload_identity_provider" {

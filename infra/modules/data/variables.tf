@@ -18,6 +18,11 @@ variable "models_bucket_name" {
   type        = string
 }
 
+variable "pipeline_root_bucket_name" {
+  description = "GCS bucket name for Vertex AI pipeline root and compiled pipeline templates"
+  type        = string
+}
+
 variable "artifacts_bucket_name" {
   description = "GCS bucket name for general-purpose artifacts (code drops, Dataform logs)"
   type        = string

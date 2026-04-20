@@ -68,6 +68,14 @@ resource "google_cloud_run_v2_service" "search_api" {
         value = tostring(var.search_cache_ttl_seconds)
       }
       env {
+        name  = "ENABLE_SEARCH"
+        value = var.vertex_encoder_endpoint_id != "" ? "true" : "false"
+      }
+      env {
+        name  = "ENABLE_RERANK"
+        value = var.vertex_reranker_endpoint_id != "" ? "true" : "false"
+      }
+      env {
         name  = "VERTEX_LOCATION"
         value = var.vertex_location
       }
@@ -78,6 +86,10 @@ resource "google_cloud_run_v2_service" "search_api" {
       env {
         name  = "VERTEX_RERANKER_ENDPOINT_ID"
         value = var.vertex_reranker_endpoint_id
+      }
+      env {
+        name  = "VERTEX_PREDICT_TIMEOUT_SECONDS"
+        value = "30.0"
       }
     }
   }

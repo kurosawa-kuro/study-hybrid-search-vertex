@@ -7,8 +7,10 @@ Parity-locked files for this 10-column set:
 3. THIS file — ``FEATURE_COLS_RANKER`` / ``LABEL_GAIN``
 4. ``infra/modules/data/main.tf``  (``ranking_log.features`` RECORD)
 5. ``monitoring/validate_feature_skew.sql``  (drift UNPIVOT)
+6. ``infra/modules/vertex/main.tf``  (Feature Group property-side feature declarations)
 
 A single added/renamed/reordered feature must touch all 5 files in the same
+A single added/renamed/reordered feature must touch all 6 files in the same
 PR; ``tests/test_feature_parity_ranking.py`` + ``tests/test_feature_parity_sql_ranker.py``
 fail fast on drift.
 """
