@@ -1,7 +1,5 @@
 """KFP embed pipeline for property embedding refresh."""
 
-from __future__ import annotations
-
 from kfp import dsl
 
 from .components import batch_predict_embeddings, load_properties, write_embeddings

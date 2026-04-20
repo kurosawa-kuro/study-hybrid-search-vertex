@@ -1,7 +1,5 @@
 """KFP component: describe a Vertex Batch Prediction embedding step."""
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 

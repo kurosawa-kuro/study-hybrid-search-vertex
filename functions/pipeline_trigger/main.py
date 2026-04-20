@@ -15,9 +15,6 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
 
-from google.cloud import aiplatform
-
-
 def _env(name: str) -> str:
     value = os.getenv(name, "").strip()
     if not value:
@@ -89,6 +86,8 @@ def _build_job_id(prefix: str) -> str:
 
 def trigger_pipeline(event: Mapping[str, Any] | None = None, context: Any | None = None) -> dict[str, Any]:
     del context
+
+    from google.cloud import aiplatform
 
     project = _env("PROJECT_ID")
     location = _env("VERTEX_LOCATION")

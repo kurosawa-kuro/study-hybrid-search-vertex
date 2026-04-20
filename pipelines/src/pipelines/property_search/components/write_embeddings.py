@@ -1,7 +1,5 @@
 """KFP component: describe MERGE of batch embeddings into BigQuery."""
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 

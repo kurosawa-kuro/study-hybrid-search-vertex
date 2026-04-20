@@ -1,7 +1,5 @@
 """KFP component: resolve hyperparameters, optionally via Vertex Vizier."""
 
-from __future__ import annotations
-
 import json
 
 from kfp import dsl

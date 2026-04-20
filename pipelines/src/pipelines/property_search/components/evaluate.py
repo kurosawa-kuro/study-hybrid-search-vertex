@@ -1,7 +1,5 @@
 """KFP component: evaluate gating metric from a metrics artifact."""
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 

@@ -9,6 +9,7 @@ members = ["common", "app", "jobs", "pipelines"]
 
 [tool.uv.sources]
 common = { workspace = true }
+jobs = { workspace = true }
 
 [dependency-groups]
 dev = [

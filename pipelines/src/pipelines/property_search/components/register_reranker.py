@@ -1,7 +1,5 @@
 """KFP component: upload and optionally deploy a reranker model."""
 
-from __future__ import annotations
-
 from kfp import dsl
 
 

@@ -1,19 +1,17 @@
 from __future__ import annotations
 
-from pipelines.property_search.compile import _coerce_parameter_value, _merge_parameter_values
-from pipelines.property_search.embed_pipeline import build_embed_pipeline_spec
-from pipelines.property_search.train_pipeline import build_train_pipeline_spec
+from pipelines.property_search.compile import _coerce_parameter_value, _merge_parameter_values, _spec
 
 
 def test_build_embed_pipeline_spec_contains_expected_steps() -> None:
-    spec = build_embed_pipeline_spec()
+    spec = _spec("embed")
 
     assert spec["name"] == "property-search-embed"
     assert spec["steps"] == ["load_properties", "batch_predict_embeddings", "write_embeddings"]
 
 
 def test_build_train_pipeline_spec_contains_expected_steps() -> None:
-    spec = build_train_pipeline_spec()
+    spec = _spec("train")
 
     assert spec["name"] == "property-search-train"
     assert spec["steps"] == [

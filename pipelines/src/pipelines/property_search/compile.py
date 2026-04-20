@@ -7,10 +7,53 @@ import json
 from pathlib import Path
 from typing import Any
 
-from kfp.compiler import Compiler
 
-from .embed_pipeline import build_embed_pipeline_spec, get_embed_pipeline
-from .train_pipeline import build_train_pipeline_spec, get_train_pipeline
+DEFAULT_SPECS: dict[str, dict[str, object]] = {
+    "embed": {
+        "name": "property-search-embed",
+        "description": "Property text embedding batch pipeline",
+        "parameters": {
+            "project_id": "mlops-dev-a",
+            "vertex_location": "asia-northeast1",
+            "dataset_id": "feature_mart",
+            "source_table": "properties_cleaned",
+            "embedding_table": "property_embeddings",
+            "endpoint_resource_name": "",
+            "model_resource_name": "",
+            "as_of_date": "",
+            "full_refresh": False,
+            "prediction_machine_type": "n1-standard-4",
+        },
+        "steps": ["load_properties", "batch_predict_embeddings", "write_embeddings"],
+    },
+    "train": {
+        "name": "property-search-train",
+        "description": "Reranker training / evaluation / registration pipeline",
+        "parameters": {
+            "project_id": "mlops-dev-a",
+            "vertex_location": "asia-northeast1",
+            "feature_dataset_id": "feature_mart",
+            "feature_table": "property_features_daily",
+            "mlops_dataset_id": "mlops",
+            "ranking_log_table": "ranking_log",
+            "feedback_events_table": "feedback_events",
+            "window_days": 90,
+            "trainer_image": "asia-northeast1-docker.pkg.dev/mlops-dev-a/mlops/trainer:latest",
+            "experiment_name": "property-reranker-lgbm",
+            "enable_tuning": False,
+            "gate_metric_name": "ndcg_at_10",
+            "gate_threshold": 0.6,
+            "model_display_name": "property-reranker",
+        },
+        "steps": [
+            "load_features",
+            "resolve_hyperparameters",
+            "train_reranker",
+            "evaluate",
+            "register_reranker",
+        ],
+    },
+}
 
 
 def _target_path(root: Path, target: str) -> Path:
@@ -22,17 +65,20 @@ def _target_path(root: Path, target: str) -> Path:
 
 
 def _spec(target: str) -> dict[str, object]:
-    if target == "embed":
-        return build_embed_pipeline_spec()
-    if target == "train":
-        return build_train_pipeline_spec()
-    raise ValueError(f"unknown target: {target}")
+    try:
+        return DEFAULT_SPECS[target]
+    except KeyError as exc:
+        raise ValueError(f"unknown target: {target}") from exc
 
 
 def _pipeline(target: str):
     if target == "embed":
+        from .embed_pipeline import get_embed_pipeline
+
         return get_embed_pipeline()
     if target == "train":
+        from .train_pipeline import get_train_pipeline
+
         return get_train_pipeline()
     raise ValueError(f"unknown target: {target}")
 
@@ -119,6 +165,8 @@ def main() -> int:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     path = _target_path(output_dir, args.target)
+    from kfp.compiler import Compiler
+
     Compiler().compile(pipeline_func=_pipeline(args.target), package_path=str(path))
     params = _merge_parameter_values(args.target, args.parameter)
     if args.write_spec_json:

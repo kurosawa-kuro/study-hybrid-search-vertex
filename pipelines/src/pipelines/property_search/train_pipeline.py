@@ -1,7 +1,5 @@
 """KFP train pipeline for reranker training / registration."""
 
-from __future__ import annotations
-
 from kfp import dsl
 
 from .components import evaluate_reranker, load_features, register_reranker, resolve_hyperparameters, train_reranker
