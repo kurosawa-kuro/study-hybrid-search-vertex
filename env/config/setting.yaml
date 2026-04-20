@@ -1,0 +1,35 @@
+# プロジェクト全体の非クレデンシャル設定 — ここが single source of truth。
+#
+# - Python から: scripts/_common.py が起動時に読み込み、DEFAULTS を構築する
+# - Makefile から: トップで awk で読み出して PROJECT_ID 等の make 変数に流し込む
+#
+# 既存値を変えた場合の影響範囲:
+#   project_id     — 全 gcloud / bq 呼び出し、Terraform var, infra/main.tf
+#   region         — Cloud Run / Artifact Registry / Cloud Build / BQ ロケーション
+#   api_service    — Cloud Run Service 名 (`gcloud run services describe …`)
+#   training_job   — Cloud Run Job 名 (`gcloud run jobs execute …`)
+#   artifact_repo  — Artifact Registry リポジトリ ID (`<region>-docker.pkg.dev/<proj>/<repo>`)
+#
+# Credentials / secrets は **ここに置かない**。Secret Manager か env/secret/ に
+# 個別のファイルを置き、env/secret/ 自体は .gitignore する想定。
+
+project_id: mlops-dev-a
+region: asia-northeast1
+api_service: search-api
+training_job: training-job
+artifact_repo: mlops
+
+# Terraform var に流す識別子。GITHUB_REPO は WIF の `attribute.repository`
+# 制約に焼き込まれる (タイポすると CI が auth できなくなる)。ONCALL_EMAIL は
+# monitoring alert policy の通知先 — `@` を含まないと variables.tf の
+# validation で落ちる。`make tf-plan` 等は env var で都度上書き可能。
+github_repo: kurosawa-kuro/study-gcp-mlops-bq-first-v2.0
+oncall_email: kurosawa-kuro@gmail.com
+
+# Dataform — definitions/workflow_settings.yaml は本ファイルから自動生成される
+# (Makefile の `make sync-dataform-config` を実行)。Dataform の YAML スキーマは
+# 固定キー (defaultProject / defaultLocation 等) なので、こちらに対応する値を
+# 並べる方針。drift は tests/test_dataform_workflow_settings.py が検知する。
+dataform_default_dataset: feature_mart
+dataform_default_assertion_dataset: feature_mart_assertions
+dataform_core_version: 3.0.0

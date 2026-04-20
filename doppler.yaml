@@ -1,0 +1,69 @@
+setup:
+  project: kuro-dev-k
+  config: dev
+
+# =========================
+# 認証・ユーザー管理
+# =========================
+
+# Clerk 認証
+# AUTH_CLERK_SECRET_KEY
+# AUTH_CLERK_PUBLISHABLE_KEY
+
+# オーナーユーザーID
+# カンマ区切りで複数指定可能
+# OWNER_USER_IDS
+
+# API Key 認証（useApiKey: true の場合に必須）
+# PROJECT_API_KEY=browser
+
+
+# =========================
+# AI / LLM
+# =========================
+
+# OpenAI API
+# AI_OPENAI_API_KEY
+
+# Weights & Biases API Key（ML 実験管理）
+# ML_WANDB_API_KEY
+
+
+# =========================
+# 通知 / 外部連携
+# =========================
+
+# Discord Webhook
+# DISCORD_WEBHOOK_URL
+
+
+# =========================
+# データベース
+# =========================
+
+# MongoDB（開発 / PoC 用）
+# DB_MONGODB_URI
+
+
+# =========================
+# インフラ / クラウド
+# =========================
+
+# AWS 認証情報
+# AWS_ACCESS_KEY_ID
+# AWS_SECRET_ACCESS_KEY
+
+
+# =========================
+# 開発用トンネル / ローカル公開
+# =========================
+
+# ngrok 認証トークン（dev専用）
+# NGROK_AUTHTOKEN
+
+
+# =========================
+# Doppler 初期化コマンド
+# =========================
+
+# doppler setup --project kuro-dev-k --config dev --no-interactive

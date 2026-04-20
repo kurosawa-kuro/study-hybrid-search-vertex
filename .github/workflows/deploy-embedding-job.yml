@@ -1,0 +1,105 @@
+name: Deploy Embedding Job
+
+# Phase 7 — deploy the `embedding-job` Cloud Run Job (property text → 768d
+# multilingual-e5 vectors → feature_mart.property_embeddings).
+#
+# Path filter is intentionally **narrow** so this workflow only fires when the
+# embedding-relevant code changes. The legacy training-job workflow keeps its
+# broad `jobs/**` filter unchanged (both workflows may run when a file in
+# jobs/ touches embedding + non-embedding code — that is desired, each workflow
+# deploys a different Job resource).
+#
+# The Cloud Run Job `embedding-job` resource is declared in infra/modules/
+# runtime once Phase 9 lands; until then this workflow only rebuilds the image
+# so the last pushed tag is always current. Missing Job resource → gcloud
+# update fails with NOT_FOUND, which we tolerate with `|| true` so CI does not
+# red-light the repo before the infra PR merges.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - jobs/src/training/entrypoints/embed_cli.py
+      - jobs/src/training/services/embedding_runner.py
+      - jobs/src/training/adapters/embedding_writer.py
+      - common/src/common/embeddings/**
+      - common/src/common/ports/embedding_store.py
+      - common/src/common/adapters/bigquery_embedding_store.py
+      - jobs/Dockerfile
+      - jobs/pyproject.toml
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/deploy-embedding-job.yml
+      - .github/actions/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGION: asia-northeast1
+  PROJECT_ID: mlops-dev-a
+  REPO: mlops
+  JOB: embedding-job
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-gcp
+        with:
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.DEPLOYER_SERVICE_ACCOUNT }}
+          project_id: ${{ env.PROJECT_ID }}
+          region: ${{ env.REGION }}
+          configure_docker: "true"
+
+      - uses: ./.github/actions/build-and-push
+        id: build
+        with:
+          region: ${{ env.REGION }}
+          project_id: ${{ env.PROJECT_ID }}
+          repo: ${{ env.REPO }}
+          image: ${{ env.JOB }}
+          dockerfile: jobs/Dockerfile
+
+      # Doppler-managed env is optional (encoder checkpoints do not need a
+      # secret today, so most installs will skip). Kept symmetric with
+      # deploy-training-job.yml so operators reuse muscle memory.
+      - name: Install Doppler CLI
+        if: ${{ secrets.DOPPLER_TOKEN_JOB != '' }}
+        uses: dopplerhq/cli-action@v3
+
+      - name: Collect Doppler secrets
+        id: doppler
+        if: ${{ secrets.DOPPLER_TOKEN_JOB != '' }}
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_JOB }}
+        run: |
+          DOPPLER_ENV=$(doppler secrets download --no-file --format env-no-quotes \
+            | grep '=' | tr '\n' '|' | sed 's/|$//')
+          echo "vars=$DOPPLER_ENV" >> "$GITHUB_OUTPUT"
+
+      - name: Update Cloud Run Jobs
+        env:
+          DOPPLER_ENV: ${{ steps.doppler.outputs.vars }}
+        run: |
+          SHORT_SHA="${GITHUB_SHA::8}"
+          # Points the Job at the bundled `embed` console script (jobs/pyproject.toml).
+          STATIC="PROJECT_ID=${{ env.PROJECT_ID }}|GIT_SHA=${SHORT_SHA}|ENCODER_MODEL_DIR="
+          ENV_ARG="^|^${STATIC}"
+          if [ -n "${DOPPLER_ENV}" ]; then
+            ENV_ARG="${ENV_ARG}|${DOPPLER_ENV}"
+          fi
+          # embedding-job は infra/modules/runtime/main.tf で定義済
+          # (google_cloud_run_v2_job.embedding_job)。以前の NOT_FOUND 許容は
+          # 不要になったので `|| true` を除去し、失敗で workflow を落とす。
+          gcloud run jobs update ${{ env.JOB }} \
+            --region ${{ env.REGION }} \
+            --image "${{ steps.build.outputs.image_uri }}" \
+            --command "embed" \
+            --service-account sa-job-embed@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
+            --set-env-vars "${ENV_ARG}"

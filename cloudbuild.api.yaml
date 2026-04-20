@@ -1,0 +1,22 @@
+# Cloud Build config for the search-api image.
+# Used by `make deploy-api-local` to build from a local checkout without
+# requiring docker buildx on the invoker's host. The CI path remains
+# .github/workflows/deploy-api.yml + .github/actions/build-and-push.
+# Invoke with:
+#   gcloud builds submit --config=cloudbuild.api.yaml --substitutions=_URI=<ar-uri> .
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file=app/Dockerfile
+      - --tag=${_URI}
+      - .
+images:
+  - ${_URI}
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+  _URI: ""

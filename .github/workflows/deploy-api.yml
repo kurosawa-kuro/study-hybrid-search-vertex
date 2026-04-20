@@ -1,0 +1,89 @@
+name: Deploy API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - app/**
+      - common/**
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/deploy-api.yml
+      - .github/actions/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGION: asia-northeast1
+  PROJECT_ID: mlops-dev-a
+  REPO: mlops
+  SERVICE: search-api
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-gcp
+        with:
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.DEPLOYER_SERVICE_ACCOUNT }}
+          project_id: ${{ env.PROJECT_ID }}
+          region: ${{ env.REGION }}
+          configure_docker: "true"
+
+      - uses: ./.github/actions/build-and-push
+        id: build
+        with:
+          region: ${{ env.REGION }}
+          project_id: ${{ env.PROJECT_ID }}
+          repo: ${{ env.REPO }}
+          image: ${{ env.SERVICE }}
+          dockerfile: app/Dockerfile
+
+      # Doppler-managed env is optional. When DOPPLER_TOKEN_API is provided,
+      # secrets from the Doppler project (config mapped to that token) are
+      # appended to --set-env-vars. Absent the token, only the static infra
+      # vars below are set. See docs/04_運用.md STEP 10 for token setup.
+      - name: Install Doppler CLI
+        if: ${{ secrets.DOPPLER_TOKEN_API != '' }}
+        uses: dopplerhq/cli-action@v3
+
+      - name: Collect Doppler secrets
+        id: doppler
+        if: ${{ secrets.DOPPLER_TOKEN_API != '' }}
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_API }}
+        run: |
+          # Pipe-separated so values containing commas survive gcloud parsing.
+          DOPPLER_ENV=$(doppler secrets download --no-file --format env-no-quotes \
+            | grep '=' | tr '\n' '|' | sed 's/|$//')
+          echo "vars=$DOPPLER_ENV" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Cloud Run
+        env:
+          STATIC_ENV: "PROJECT_ID=${{ env.PROJECT_ID }}|GCS_MODELS_BUCKET=mlops-dev-a-models|RANKING_LOG_TOPIC=ranking-log|FEEDBACK_TOPIC=search-feedback|RETRAIN_TOPIC=retrain-trigger|LOG_AS_JSON=1|GCP_LOGGING_ENABLED=1"
+          DOPPLER_ENV: ${{ steps.doppler.outputs.vars }}
+        run: |
+          # gcloud `^|^` prefix lets us use `|` as the delimiter between KEY=value
+          # pairs, which keeps Doppler secret values containing `,` intact.
+          ENV_ARG="^|^${STATIC_ENV}"
+          if [ -n "${DOPPLER_ENV}" ]; then
+            ENV_ARG="${ENV_ARG}|${DOPPLER_ENV}"
+          fi
+          gcloud run deploy ${{ env.SERVICE }} \
+            --region ${{ env.REGION }} \
+            --image "${{ steps.build.outputs.image_uri }}" \
+            --service-account sa-api@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
+            --cpu 2 --memory 4Gi \
+            --concurrency 80 \
+            --min-instances 1 --max-instances 10 \
+            --cpu-boost \
+            --execution-environment gen2 \
+            --no-allow-unauthenticated \
+            --set-env-vars "${ENV_ARG}" \
+            --labels "git-sha=${GITHUB_SHA::8}"
