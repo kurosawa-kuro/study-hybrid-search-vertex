@@ -18,6 +18,7 @@ from .model_store import (
 from .publisher import PubSubPublisher
 from .retrain import BigQueryRetrainQueries, create_retrain_queries
 from .training_job import CloudRunJobRunner
+from .vertex_prediction import VertexEndpointEncoder, VertexEndpointReranker
 
 __all__ = [
     "BigQueryCandidateRetriever",
@@ -37,5 +38,7 @@ __all__ = [
     "PubSubFeedbackRecorder",
     "PubSubPublisher",
     "PubSubRankingLogPublisher",
+    "VertexEndpointEncoder",
+    "VertexEndpointReranker",
     "create_retrain_queries",
 ]

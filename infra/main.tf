@@ -55,6 +55,9 @@ module "runtime" {
   service_accounts        = module.iam.service_accounts
   meili_base_url          = module.meilisearch.meili_base_url
   search_cache_ttl_seconds = var.search_cache_ttl_seconds
+  vertex_location         = var.vertex_location
+  vertex_encoder_endpoint_id = var.vertex_encoder_endpoint_id
+  vertex_reranker_endpoint_id = var.vertex_reranker_endpoint_id
 
   depends_on = [
     google_project_service.enabled,

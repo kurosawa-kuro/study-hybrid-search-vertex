@@ -1,16 +1,7 @@
 """FastAPI hybrid-search API — Cloud Run Service entrypoint.
 
-Endpoints:
-
-* ``/search``   — candidate retrieval + optional LambdaRank rerank.
-* ``/feedback`` — click / favorite / inquiry log sink.
-* ``/jobs/check-retrain`` + ``/events/retrain`` — ranker retrain orchestration.
-
-Rerank is opt-in via ``ApiSettings.enable_rerank``. Lifespan tries to resolve
-+ load the latest booster from ``mlops.training_runs`` + GCS; load failures
-log a warning and the API keeps running with ``booster=None`` (Phase 4
-fallback, ``final_rank == lexical_rank``). That way a newly-deployed revision
-stays up even if the training loop has not yet produced a model.
+Cloud Run keeps only retrieval / orchestration concerns. Query embeddings and
+rerank scoring are delegated to Vertex AI Endpoints when configured.
 """
 
 from __future__ import annotations
@@ -19,8 +10,7 @@ import os
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from common.logging import configure_logging
 from fastapi import FastAPI, Request
@@ -30,12 +20,8 @@ from common import get_logger
 
 from ..adapters import (
     BigQueryCandidateRetriever,
-    BigQueryModelResolver,
     CloudRunJobRunner,
-    DispatchModelSource,
-    GcsModelSource,
     InMemoryTTLCacheStore,
-    LocalModelSource,
     MeilisearchLexical,
     NoopCacheStore,
     NoopFeedbackRecorder,
@@ -44,16 +30,20 @@ from ..adapters import (
     PubSubFeedbackRecorder,
     PubSubPublisher,
     PubSubRankingLogPublisher,
+    VertexEndpointEncoder,
+    VertexEndpointReranker,
     create_retrain_queries,
 )
 from ..config import ApiSettings
 from ..middleware import RequestLoggingMiddleware
 from ..ports import (
     CacheStore,
+    EncoderClient,
     FeedbackRecorder,
     LexicalSearchPort,
     PredictionPublisher,
     RankingLogPublisher,
+    RerankerClient,
     TrainingJobRunner,
 )
 from ..schemas import (
@@ -63,12 +53,8 @@ from ..schemas import (
     SearchResponse,
     SearchResultItem,
 )
-from ..services.model_store import load_model, resolve_model_uri
 from ..services.ranking import normalize_search_cache_key, run_search
 from ..services.retrain_policy import evaluate as evaluate_retrain
-
-if TYPE_CHECKING:
-    import lightgbm as lgb
 
 
 def _build_retrain_publisher(settings: ApiSettings) -> PredictionPublisher | None:
@@ -133,33 +119,40 @@ def _build_search_cache(settings: ApiSettings) -> CacheStore:
     )
 
 
-def _try_load_booster(
-    settings: ApiSettings, training_runs_table: str
-) -> tuple[lgb.Booster | None, str | None]:
-    """Resolve + materialize + load the latest booster. Returns (None, None) on any failure."""
+def _build_encoder_client(settings: ApiSettings) -> tuple[EncoderClient | None, str | None]:
     logger = get_logger("app")
-    try:
-        resolver = BigQueryModelResolver(
-            project_id=settings.project_id,
-            training_runs_table=training_runs_table,
-        )
-        uri = resolve_model_uri(override=settings.model_path_override, resolver=resolver)
-        if uri is None:
-            logger.warning(
-                "enable_rerank=True but no training run is available; "
-                "serving with rerank disabled (fallback to lexical_rank)"
-            )
-            return None, None
-        local_dir = Path(settings.local_model_dir)
-        local_dir.mkdir(parents=True, exist_ok=True)
-        source = DispatchModelSource(gcs=GcsModelSource(), local=LocalModelSource())
-        loaded = load_model(uri, local_dir, source)
-    except Exception:
-        logger.exception(
-            "Booster load failed; serving with rerank disabled (fallback to lexical_rank)"
-        )
+    if not settings.vertex_encoder_endpoint_id:
+        logger.warning("ENABLE_SEARCH=true but VERTEX_ENCODER_ENDPOINT_ID is empty")
         return None, None
-    return loaded.booster, loaded.model_path
+    try:
+        client = VertexEndpointEncoder(
+            project_id=settings.project_id,
+            location=settings.vertex_location,
+            endpoint_id=settings.vertex_encoder_endpoint_id,
+        )
+    except Exception:
+        logger.exception("Failed to initialize Vertex encoder endpoint client")
+        return None, None
+    return client, client.endpoint_name
+
+
+def _build_reranker_client(settings: ApiSettings) -> tuple[RerankerClient | None, str | None]:
+    logger = get_logger("app")
+    if not settings.enable_rerank:
+        return None, None
+    if not settings.vertex_reranker_endpoint_id:
+        logger.warning("ENABLE_RERANK=true but VERTEX_RERANKER_ENDPOINT_ID is empty")
+        return None, None
+    try:
+        client = VertexEndpointReranker(
+            project_id=settings.project_id,
+            location=settings.vertex_location,
+            endpoint_id=settings.vertex_reranker_endpoint_id,
+        )
+    except Exception:
+        logger.exception("Failed to initialize Vertex reranker endpoint client")
+        return None, None
+    return client, client.endpoint_name
 
 
 @asynccontextmanager
@@ -183,23 +176,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         job_name="training-job",
     )
 
-    # /search encoder + candidate retriever (Phase 4 baseline).
     if settings.enable_search:
-        from common.embeddings import E5Encoder
-
-        encoder_dir = Path(settings.encoder_model_dir) if settings.encoder_model_dir else None
-        app.state.encoder = E5Encoder.load(model_dir=encoder_dir)
+        encoder_client, encoder_model_path = _build_encoder_client(settings)
         app.state.candidate_retriever = _build_candidate_retriever(settings)
+        app.state.encoder_client = encoder_client
+        app.state.encoder_model_path = encoder_model_path
     else:
-        app.state.encoder = None
         app.state.candidate_retriever = None
+        app.state.encoder_client = None
+        app.state.encoder_model_path = None
 
-    # Phase 6 LambdaRank booster — optional. Load failure is not fatal.
-    if settings.enable_search and settings.enable_rerank:
-        booster, model_path = _try_load_booster(settings, training_runs_table)
-    else:
-        booster, model_path = None, None
-    app.state.booster = booster
+    reranker_client, model_path = _build_reranker_client(settings)
+    app.state.reranker_client = reranker_client
     app.state.model_path = model_path
 
     app.state.ranking_log_publisher = _build_ranking_log_publisher(settings)
@@ -210,7 +198,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info(
         "Startup complete; search_enabled=%s rerank_enabled=%s model_path=%s",
         settings.enable_search,
-        booster is not None,
+        reranker_client is not None,
         model_path,
     )
     yield
@@ -219,7 +207,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     configure_logging()
     logger = get_logger("app")
-    app = FastAPI(title="bq-first hybrid search API", lifespan=lifespan)
+    app = FastAPI(title="vertex-backed hybrid search API", lifespan=lifespan)
     app.add_middleware(RequestLoggingMiddleware, logger=logger)
 
     # `/livez` is the canonical liveness path. `/healthz` is also registered
@@ -235,14 +223,15 @@ def create_app() -> FastAPI:
     @app.get("/readyz")
     def readyz(request: Request) -> JSONResponse:
         retriever = getattr(request.app.state, "candidate_retriever", None)
-        if retriever is None:
+        encoder_client = getattr(request.app.state, "encoder_client", None)
+        if retriever is None or encoder_client is None:
             return JSONResponse({"status": "loading"}, status_code=503)
-        booster = getattr(request.app.state, "booster", None)
+        reranker = getattr(request.app.state, "reranker_client", None)
         return JSONResponse(
             {
                 "status": "ready",
                 "search_enabled": True,
-                "rerank_enabled": booster is not None,
+                "rerank_enabled": reranker is not None,
                 "model_path": getattr(request.app.state, "model_path", None),
             }
         )
@@ -250,10 +239,10 @@ def create_app() -> FastAPI:
     @app.post("/search", response_model=SearchResponse)
     def search(req: SearchRequest, request: Request) -> SearchResponse | JSONResponse:
         retriever = getattr(request.app.state, "candidate_retriever", None)
-        encoder = getattr(request.app.state, "encoder", None)
-        if retriever is None or encoder is None:
+        encoder_client = getattr(request.app.state, "encoder_client", None)
+        if retriever is None or encoder_client is None:
             return JSONResponse(
-                {"detail": "/search disabled (enable_search=False or encoder missing)"},
+                {"detail": "/search disabled (enable_search=False or Vertex encoder missing)"},
                 status_code=503,
             )
         request_id = cast(str, getattr(request.state, "request_id", uuid.uuid4().hex))
@@ -273,11 +262,10 @@ def create_app() -> FastAPI:
                 model_path=cached.get("model_path"),
             )
 
-        query_vec = encoder.encode_queries([req.query])[0]
-        query_vector = [float(x) for x in query_vec]
+        query_vector = encoder_client.embed(req.query, "query")
 
         publisher: RankingLogPublisher = request.app.state.ranking_log_publisher
-        booster = getattr(request.app.state, "booster", None)
+        reranker = getattr(request.app.state, "reranker_client", None)
         model_path = getattr(request.app.state, "model_path", None)
         pairs = run_search(
             retriever=retriever,
@@ -287,7 +275,7 @@ def create_app() -> FastAPI:
             query_vector=query_vector,
             filters=req.filters.model_dump(),
             top_k=req.top_k,
-            booster=booster,
+            reranker=reranker,
             model_path=model_path,
         )
 
@@ -295,14 +283,14 @@ def create_app() -> FastAPI:
         # (run_search returns the ranked tuple list; the score list was emitted
         # to the publisher in lexical order.)
         score_by_id: dict[str, float] = {}
-        if booster is not None:
+        if reranker is not None:
             # Recompute scores for the truncated pairs — cheap (top_k ≤ 100) and
             # avoids threading a second list back through run_search.
             from ..services.ranking import _score_candidates
 
             returned_candidates = [cand for cand, _ in pairs]
             if returned_candidates:
-                scores = _score_candidates(returned_candidates, booster)
+                scores = _score_candidates(returned_candidates, reranker)
                 score_by_id = {
                     c.property_id: s for c, s in zip(returned_candidates, scores, strict=True)
                 }

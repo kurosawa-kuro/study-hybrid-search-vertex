@@ -1,4 +1,4 @@
-# Multi-stage uv build for Cloud Run Service (FastAPI + LightGBM).
+# Multi-stage uv build for Cloud Run Service (FastAPI proxy to Vertex AI).
 # BuildKit cache mounts removed so the Dockerfile works under Cloud Build's
 # `gcr.io/cloud-builders/docker` (no buildx) as well as GitHub Actions runners.
 
@@ -29,10 +29,6 @@ RUN uv sync --frozen --no-dev --package app --no-editable
 
 FROM python:3.12-slim-bookworm AS runtime
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
-
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -42,8 +38,8 @@ ENV PATH="/opt/venv/bin:${PATH}" \
     GCP_LOGGING_ENABLED=1
 
 RUN useradd --system --uid 1001 --home-dir /home/app app \
-    && mkdir -p /home/app /tmp/model \
-    && chown -R app:app /home/app /tmp/model
+    && mkdir -p /home/app \
+    && chown -R app:app /home/app
 USER app
 WORKDIR /home/app
 

@@ -29,13 +29,9 @@ resource "google_cloud_run_v2_service" "search_api" {
     containers {
       image = local.image_placeholder
       resources {
-        # memory bumped from 2Gi to 4Gi in Phase 6 to accommodate the
-        # multilingual-e5-base encoder (~1.1GB) loaded in lifespan + LightGBM
-        # booster (~50MB) + Python runtime overhead. Keep this in lockstep with
-        # deploy-api.yml's `--memory` flag and CLAUDE.md non-negotiables.
         limits = {
           cpu    = "2"
-          memory = "4Gi"
+          memory = "2Gi"
         }
         cpu_idle          = false
         startup_cpu_boost = true
@@ -70,6 +66,18 @@ resource "google_cloud_run_v2_service" "search_api" {
       env {
         name  = "SEARCH_CACHE_TTL_SECONDS"
         value = tostring(var.search_cache_ttl_seconds)
+      }
+      env {
+        name  = "VERTEX_LOCATION"
+        value = var.vertex_location
+      }
+      env {
+        name  = "VERTEX_ENCODER_ENDPOINT_ID"
+        value = var.vertex_encoder_endpoint_id
+      }
+      env {
+        name  = "VERTEX_RERANKER_ENDPOINT_ID"
+        value = var.vertex_reranker_endpoint_id
       }
     }
   }

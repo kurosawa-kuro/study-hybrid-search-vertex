@@ -4,6 +4,7 @@ locals {
     "bigquerystorage.googleapis.com",
     "run.googleapis.com",
     "artifactregistry.googleapis.com",
+    "aiplatform.googleapis.com",
     "dataform.googleapis.com",
     "pubsub.googleapis.com",
     "cloudscheduler.googleapis.com",
@@ -14,7 +15,9 @@ locals {
     "monitoring.googleapis.com",
     "logging.googleapis.com",
     "eventarc.googleapis.com",
+    "cloudfunctions.googleapis.com",
     "cloudbuild.googleapis.com",
+    "notebooks.googleapis.com",
   ]
 }
 

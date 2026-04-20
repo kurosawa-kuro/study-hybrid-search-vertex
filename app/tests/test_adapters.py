@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 from app.adapters import (
     CloudRunJobRunner,
     PubSubPublisher,
+    VertexEndpointEncoder,
+    VertexEndpointReranker,
     create_retrain_queries,
 )
 
@@ -65,3 +67,37 @@ def test_pubsub_publisher_publishes_json_bytes() -> None:
     decoded = json.loads(call_args[1].decode("utf-8"))
     assert decoded == {"reasons": ["ndcg_drop=0.05>=0.03"], "日本語": "ok"}
     fake_future.result.assert_called_once()
+
+
+def test_vertex_endpoint_encoder_parses_embedding_dict_response() -> None:
+    fake_endpoint = MagicMock()
+    fake_endpoint.predict.return_value.predictions = [{"embedding": [0.1, 0.2, 0.3]}]
+
+    adapter = VertexEndpointEncoder(
+        project_id="p",
+        location="asia-northeast1",
+        endpoint_id="123",
+        endpoint=fake_endpoint,
+    )
+    vector = adapter.embed("赤羽駅徒歩10分", "query")
+
+    fake_endpoint.predict.assert_called_once_with(instances=[{"text": "query: 赤羽駅徒歩10分"}])
+    assert vector == [0.1, 0.2, 0.3]
+    assert adapter.endpoint_name == "projects/p/locations/asia-northeast1/endpoints/123"
+
+
+def test_vertex_endpoint_reranker_parses_scalar_scores() -> None:
+    fake_endpoint = MagicMock()
+    fake_endpoint.predict.return_value.predictions = [0.9, 0.4, 0.1]
+
+    adapter = VertexEndpointReranker(
+        project_id="p",
+        location="asia-northeast1",
+        endpoint_id="projects/p/locations/asia-northeast1/endpoints/456",
+        endpoint=fake_endpoint,
+    )
+    scores = adapter.predict([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+
+    fake_endpoint.predict.assert_called_once_with(instances=[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+    assert scores == [0.9, 0.4, 0.1]
+    assert adapter.endpoint_name == "projects/p/locations/asia-northeast1/endpoints/456"

@@ -2,49 +2,33 @@
 
 Two rerank modes coexist:
 
-* **Phase 4 fallback** (``booster=None``): ``final_rank = lexical_rank`` — the
-  VECTOR_SEARCH order is returned as-is, ``score`` is ``None`` everywhere.
-* **Phase 6 rerank** (``booster`` supplied): features are assembled via
-  ``common.feature_engineering.build_ranker_features``, ``booster.predict()``
-  produces a per-candidate score, candidates are sorted by score descending
-  and their ``final_rank`` is the new 1-based position.
+* **Fallback** (``reranker=None``): ``final_rank = lexical_rank``.
+* **Vertex rerank** (``reranker`` supplied): ranker features are assembled and
+  passed to the reranker port, which returns one score per candidate.
 
 The ranking_log publisher always receives the full candidate pool plus the
 score list (``None`` in fallback mode) so offline evaluation can compare
-both regimes even during a gradual rollout.
-
-This module stays free of GCP SDK imports so tests can exercise it with the
-fake adapters in ``app/tests/conftest.py``.
+both regimes during rollout.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any, Protocol
+from typing import Any
 
-import numpy as np
 from common.feature_engineering import build_ranker_features
 
 from common import FEATURE_COLS_RANKER
 
 from ..ports.candidate_retriever import Candidate, CandidateRetriever, RankingLogPublisher
+from ..ports.reranker_client import RerankerClient
 
 RRF_K: int = 60
 DEFAULT_SEARCH_CACHE_TTL_SECONDS: int = 120
 
 
-class _Booster(Protocol):
-    """Structural type for anything with a ``predict(np.ndarray) -> np.ndarray`` surface.
-
-    Declared locally so this module does not import ``lightgbm`` (the
-    boundary test bans it for pure-logic services).
-    """
-
-    def predict(self, X: np.ndarray) -> np.ndarray: ...
-
-
-def _score_candidates(candidates: list[Candidate], booster: _Booster) -> list[float]:
+def _score_candidates(candidates: list[Candidate], reranker: RerankerClient) -> list[float]:
     """Build the feature matrix in FEATURE_COLS_RANKER order and call predict."""
     rows = [
         build_ranker_features(
@@ -55,8 +39,8 @@ def _score_candidates(candidates: list[Candidate], booster: _Booster) -> list[fl
         )
         for cand in candidates
     ]
-    matrix = np.array([[row[col] for col in FEATURE_COLS_RANKER] for row in rows], dtype=float)
-    return [float(x) for x in booster.predict(matrix)]
+    matrix = [[float(row[col]) for col in FEATURE_COLS_RANKER] for row in rows]
+    return reranker.predict(matrix)
 
 
 def run_search(
@@ -68,12 +52,12 @@ def run_search(
     query_vector: list[float],
     filters: dict[str, Any],
     top_k: int,
-    booster: _Booster | None = None,
+    reranker: RerankerClient | None = None,
     model_path: str | None = None,
 ) -> list[tuple[Candidate, int]]:
     """Execute one search and return ``[(candidate, final_rank), ...]`` truncated to top_k.
 
-    If ``booster`` is ``None`` the fallback path kicks in (Phase 4 contract).
+    If ``reranker`` is ``None`` the fallback path kicks in.
     Either way, ranking_log receives one row per retrieved candidate (not just
     the top_k) so offline eval keeps the full pool.
     """
@@ -89,12 +73,12 @@ def run_search(
             candidates=[],
             final_ranks=[],
             scores=[],
-            model_path=model_path if booster is not None else None,
+            model_path=model_path if reranker is not None else None,
         )
         return []
 
-    if booster is not None:
-        scores = _score_candidates(candidates, booster)
+    if reranker is not None:
+        scores = _score_candidates(candidates, reranker)
         # Stable descending sort; higher score wins. Ties preserve lexical order
         # because ``sorted`` is stable and candidates are already lexically ordered.
         order = sorted(range(len(candidates)), key=lambda i: -scores[i])
@@ -114,7 +98,7 @@ def run_search(
         )
         return ranked[:top_k]
 
-    # Fallback: rerank disabled or booster missing.
+    # Fallback: rerank disabled or reranker missing.
     final_ranks = [c.lexical_rank for c in candidates]
     publisher.publish_candidates(
         request_id=request_id,

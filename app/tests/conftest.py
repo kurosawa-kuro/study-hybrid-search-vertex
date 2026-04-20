@@ -1,30 +1,19 @@
-"""Shared fixtures for the /search + /feedback FastAPI tests.
-
-The lifespan (which hits BigQuery + loads sentence-transformers) is bypassed
-by swapping ``app.router.lifespan_context`` with a no-op; stub adapters are
-assigned directly to ``app.state`` so request handlers see the Port surface
-they expect.
-"""
+"""Shared fixtures for the /search + /feedback FastAPI tests."""
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
+from app.adapters.cache_store import InMemoryTTLCacheStore
 from app.config import ApiSettings
 from app.entrypoints.api import create_app
-from app.adapters.cache_store import InMemoryTTLCacheStore
 from fastapi.testclient import TestClient
 
 
-class _StubEncoder:
-    model_name = "stub-e5"
-    vector_dim = 4
-
-    def encode_queries(self, queries):
-        return np.array([[1.0, 0.0, 0.0, 0.0] for _ in queries], dtype=float)
-
-    def encode_passages(self, passages):
-        return self.encode_queries(passages)
+class _StubEncoderClient:
+    def embed(self, text: str, kind: str) -> list[float]:
+        assert kind == "query"
+        assert text
+        return [1.0, 0.0, 0.0, 0.0]
 
 
 class _StubCandidateRetriever:
@@ -83,20 +72,19 @@ class _StubFeedbackRecorder:
 def app_with_search_stub():
     """App wired up with fake encoder + retriever + publishers (no BQ / torch).
 
-    ``booster`` / ``model_path`` default to None → rerank-off (Phase 4 fallback).
-    Tests that want to exercise the Phase 6 rerank path should assign a stub
-    booster onto ``app.state.booster`` before invoking the test client.
+    ``reranker_client`` / ``model_path`` default to None → rerank-off.
+    Tests that want rerank-on can assign a stub reranker onto app.state.
     """
     from contextlib import asynccontextmanager
 
     app = create_app()
-    app.state.encoder = _StubEncoder()
+    app.state.encoder_client = _StubEncoderClient()
     app.state.candidate_retriever = _StubCandidateRetriever()
     app.state.ranking_log_publisher = _StubRankingLogPublisher()
     app.state.feedback_recorder = _StubFeedbackRecorder()
     app.state.search_cache = InMemoryTTLCacheStore(default_ttl_seconds=120)
     app.state.settings = ApiSettings()
-    app.state.booster = None
+    app.state.reranker_client = None
     app.state.model_path = None
 
     @asynccontextmanager

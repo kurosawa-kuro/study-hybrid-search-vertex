@@ -68,3 +68,21 @@ variable "search_cache_ttl_seconds" {
   type        = number
   default     = 120
 }
+
+variable "vertex_location" {
+  description = "Vertex AI location for endpoint calls"
+  type        = string
+  default     = "asia-northeast1"
+}
+
+variable "vertex_encoder_endpoint_id" {
+  description = "Vertex AI encoder endpoint ID or full resource name"
+  type        = string
+  default     = ""
+}
+
+variable "vertex_reranker_endpoint_id" {
+  description = "Vertex AI reranker endpoint ID or full resource name"
+  type        = string
+  default     = ""
+}

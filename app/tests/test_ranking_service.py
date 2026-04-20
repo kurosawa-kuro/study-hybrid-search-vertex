@@ -1,23 +1,10 @@
-"""Pure-orchestration tests for ``app.services.ranking.run_search``.
-
-Two rerank regimes covered:
-
-* ``booster=None`` (Phase 4 fallback): ``final_rank == lexical_rank``, scores
-  list is all ``None``.
-* ``booster=<stub>`` (Phase 6 rerank): final_rank follows score desc, scores
-  propagate to the publisher.
-
-Both paths must log every retrieved candidate (not just top_k).
-
-All fake adapters are inlined so the test has no torch / GCP dependency.
-"""
+"""Pure-orchestration tests for ``app.services.ranking.run_search``."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
 
-import numpy as np
 import pytest
 from app.ports.candidate_retriever import Candidate
 from app.services.ranking import run_search
@@ -64,18 +51,11 @@ class _FakePublisher:
         )
 
 
-class _StubBooster:
-    """A minimal booster stand-in that returns predictable scores.
+class _StubReranker:
+    """A minimal reranker stand-in that returns predictable scores."""
 
-    ``predict`` takes a 2D ``np.ndarray`` (rows=candidates, cols=FEATURE_COLS_RANKER)
-    and returns one score per row. The stub scores inversely by ``lexical_rank``
-    (column index 8) so the rerank reverses the lexical order — useful for
-    asserting that scores actually drive the output sort.
-    """
-
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        # FEATURE_COLS_RANKER[-1] == "lexical_rank" → reverse by that column.
-        return -X[:, 8]
+    def predict(self, instances: list[list[float]]) -> list[float]:
+        return [-row[8] for row in instances]
 
 
 def _candidate(i: int) -> Candidate:
@@ -96,7 +76,7 @@ def _candidate(i: int) -> Candidate:
     )
 
 
-# -- Phase 4 fallback (booster=None) ------------------------------------------
+# -- Fallback (reranker=None) -------------------------------------------------
 
 
 def test_run_search_preserves_lexical_order() -> None:
@@ -115,7 +95,7 @@ def test_run_search_preserves_lexical_order() -> None:
     assert [rank for _, rank in out] == [1, 2, 3]
 
 
-def test_run_search_final_rank_equals_lexical_rank_without_booster() -> None:
+def test_run_search_final_rank_equals_lexical_rank_without_reranker() -> None:
     retriever = _FakeRetriever(candidates=[_candidate(i) for i in range(1, 5)])
     publisher = _FakePublisher()
     run_search(
@@ -186,10 +166,10 @@ def test_run_search_empty_result() -> None:
     assert publisher.calls[0]["scores"] == []
 
 
-# -- Phase 6 rerank (booster supplied) ----------------------------------------
+# -- Vertex rerank -------------------------------------------------------------
 
 
-def test_run_search_rerank_reverses_order_when_booster_says_so() -> None:
+def test_run_search_rerank_reverses_order_when_reranker_says_so() -> None:
     retriever = _FakeRetriever(candidates=[_candidate(i) for i in range(1, 5)])
     publisher = _FakePublisher()
     out = run_search(
@@ -200,18 +180,15 @@ def test_run_search_rerank_reverses_order_when_booster_says_so() -> None:
         query_vector=[0.0],
         filters={},
         top_k=4,
-        booster=_StubBooster(),
-        model_path="gs://stub/lgbm/x/y/model.txt",
+        reranker=_StubReranker(),
+        model_path="projects/p/locations/l/endpoints/123",
     )
-    # Stub booster scores by -lexical_rank, so P-001 (rank 1) wins.
-    # Since lexical and stub ordering align here, verify via final_rank instead:
     assert [c.property_id for c, _ in out] == ["P-001", "P-002", "P-003", "P-004"]
     assert [rank for _, rank in out] == [1, 2, 3, 4]
-    # publisher received a real score for every candidate (not None), in lexical order.
     call = publisher.calls[0]
     assert [c.property_id for c in call["candidates"]] == ["P-001", "P-002", "P-003", "P-004"]
     assert all(isinstance(s, float) for s in call["scores"])
-    assert call["model_path"] == "gs://stub/lgbm/x/y/model.txt"
+    assert call["model_path"] == "projects/p/locations/l/endpoints/123"
 
 
 @pytest.mark.parametrize("top_k", [1, 2, 4])
@@ -226,8 +203,8 @@ def test_run_search_rerank_truncates_to_top_k(top_k: int) -> None:
         query_vector=[0.0],
         filters={},
         top_k=top_k,
-        booster=_StubBooster(),
-        model_path="gs://stub/model.txt",
+        reranker=_StubReranker(),
+        model_path="projects/p/locations/l/endpoints/123",
     )
     assert len(out) == top_k
     # Full pool still published.
@@ -235,13 +212,11 @@ def test_run_search_rerank_truncates_to_top_k(top_k: int) -> None:
 
 
 def test_run_search_rerank_with_higher_score_wins() -> None:
-    """Explicit score check: ensure higher booster score produces rank=1."""
+    """Explicit score check: ensure higher reranker score produces rank=1."""
 
-    class _ForceWinBooster:
-        # Return scores inverse to position so the last candidate wins.
-        def predict(self, X: np.ndarray) -> np.ndarray:
-            n = X.shape[0]
-            return np.array([-(i) for i in range(n)], dtype=float)  # first=0, last=-(n-1)
+    class _ForceWinReranker:
+        def predict(self, instances: list[list[float]]) -> list[float]:
+            return [float(-i) for i in range(len(instances))]
 
     retriever = _FakeRetriever(candidates=[_candidate(i) for i in range(1, 4)])
     publisher = _FakePublisher()
@@ -253,9 +228,8 @@ def test_run_search_rerank_with_higher_score_wins() -> None:
         query_vector=[0.0],
         filters={},
         top_k=3,
-        booster=_ForceWinBooster(),
-        model_path="gs://stub/model.txt",
+        reranker=_ForceWinReranker(),
+        model_path="projects/p/locations/l/endpoints/999",
     )
-    # First candidate (highest score 0) wins rank 1.
     assert out[0][0].property_id == "P-001"
     assert out[0][1] == 1
