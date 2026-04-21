@@ -35,9 +35,8 @@
 | Python | 3.12 | `pyproject.toml` |
 | パッケージ管理 | `uv` (pip / poetry 不可) | workspace 採用 |
 | IaC | Terraform 1.9+ | |
-| Cloud Run Service | `--cpu 2 --memory 4Gi --concurrency 80 --min-instances 1 --max-instances 10 --cpu-boost --execution-environment gen2 --no-allow-unauthenticated` | コールドスタート回避、IAM-gated。4Gi は ME5 encoder (~1.1GB) + Booster + Python overhead を収めるため |
-| Cloud Run Jobs | `--cpu 2 --memory 4Gi --task-timeout 1800s --max-retries 1` | 実装は `infra/modules/runtime/main.tf` |
-| Service Account | 5 SA 分離 (`sa-api` / `sa-job-train` / `sa-job-embed` / `sa-dataform` / `sa-scheduler`) + WIF 専用 `sa-github-deployer` | 最小権限の境界、統合しない。`sa-job-embed` は `feature_mart` への書込専用で `mlops.*` への書込権を持たないので blast radius を小さく分離 |
+| Cloud Run Service | `--cpu 2 --memory 2Gi --concurrency 80 --min-instances 1 --max-instances 10 --cpu-boost --execution-environment gen2 --no-allow-unauthenticated` | コールドスタート回避、IAM-gated。Phase 4 で encoder / reranker を Vertex Endpoint へ外部化したため 4Gi → 2Gi に縮小 |
+| Service Account | 9 SA 分離 (`sa-api` / `sa-pipeline` / `sa-job-train` / `sa-job-embed` / `sa-endpoint-encoder` / `sa-endpoint-reranker` / `sa-pipeline-trigger` / `sa-dataform` / `sa-scheduler`) + WIF 専用 `sa-github-deployer` = 計 10 SA | 最小権限の境界、統合しない。Endpoint ランタイム SA (`sa-endpoint-*`) と Pipeline 起動 SA (`sa-pipeline` / `sa-pipeline-trigger`) を分けて blast radius を小さく保つ。`sa-job-train` / `sa-job-embed` は Cloud Run Jobs 時代からの継続 SA で、`embed_pipeline` 完走後に段階削除予定 |
 | 設定値 single source | `env/config/setting.yaml` (project_id / region / api_service / training_job / artifact_repo / github_repo / oncall_email / dataform_*) | flat key:value のみ。Python は `scripts/_common.py::DEFAULTS` で読み、Make は awk で読む。`github_repo` / `oncall_email` も yaml が既定値で、env で都度上書き可。`definitions/workflow_settings.yaml` は **auto-generated** (gitignore + `make sync-dataform-config` で再生成、parity test で drift 検知) |
 | 認証 | GitHub Actions → Workload Identity Federation (SA Key 禁止) | 監査要件 |
 | 再学習条件 (`app/src/app/services/retrain_policy.py`) | `NEW_FEEDBACK_ROWS_THRESHOLD = 10_000` / `NDCG_DEGRADATION = 0.03` / `STALE_DAYS = 7` | コード定数。変更時は `app/tests/test_retrain.py` にケース追加 |
@@ -46,15 +45,16 @@
 
 ---
 
-## Feature parity invariant (5 ファイル同一 PR 原則)
+## Feature parity invariant (6 ファイル同一 PR 原則)
 
-特徴量を追加 / 変更するとき、以下 5 つを **必ず同じ PR で揃える** (片方だけだと Scheduled Query のスキュー検知が FAIL する):
+特徴量を追加 / 変更するとき、以下 6 つを **必ず同じ PR で揃える** (片方だけだと Scheduled Query のスキュー検知 / Vertex Feature Group parity テストが FAIL する):
 
 1. `definitions/features/property_features_daily.sqlx` (訓練側 SQL — ctr / fav_rate / inquiry_rate の SAFE_DIVIDE 式)
 2. `common/src/common/feature_engineering.py::build_ranker_features` (推論側 Python、10 列の組み立て)
 3. `common/src/common/schema/feature_schema.py` の `FEATURE_COLS_RANKER` (10 列の順序と名前)
 4. `infra/modules/data/main.tf` の `ranking_log.features` RECORD スキーマ (API publish のキー名と 1:1、FLOAT64 NULLABLE)
 5. `monitoring/validate_feature_skew.sql` の UNPIVOT (訓練側・推論側とも property-side 7 列を列挙、`tests/parity/test_feature_parity_sql_ranker.py` で検証)
+6. `infra/modules/vertex/main.tf::google_vertex_ai_feature_group_feature` × 7 (Vertex Feature Group の property-side 7 列、`tests/parity/test_feature_parity_feature_group.py` で `FEATURE_COLS_RANKER` との 1:1 を検査)
 
 10 列中 7 列 (`rent` / `walk_min` / `age_years` / `area_m2` / `ctr` / `fav_rate` / `inquiry_rate`) が property-side で訓練 / 推論で共通。残り 3 列 (`me5_score` / `lexical_rank` / `semantic_rank`) はクエリ時に計算されるので監視 SQL からは除外し、サービング側で別のサニティチェックを回す。
 
@@ -116,7 +116,7 @@ CI path filters (`app/**` / `jobs/**` / `definitions/**` / `infra/**`) は top-l
   - `jobs/src/training/`: `entrypoints/` (rank_cli, embed_cli) / `services/` (rank_trainer, ranking_metrics, embedding_runner) / `adapters/` (embedding_writer) + top-level `config.py`
 - **自動検知** (`tests/` は責務別 3 サブフォルダに分割):
   - `tests/arch/test_import_boundaries.py` — AST 境界 (canonical な `RULES` は `scripts/checks/layers.py`、`make check-layers` でも CLI 単独実行可)
-  - `tests/parity/test_feature_parity_ranking.py` + `tests/parity/test_feature_parity_sql_ranker.py` — 5 ファイル parity invariant
+  - `tests/parity/test_feature_parity_ranking.py` + `tests/parity/test_feature_parity_sql_ranker.py` + `tests/parity/test_feature_parity_feature_group.py` — 6 ファイル parity invariant
   - `tests/parity/test_dataform_workflow_settings.py` — setting.yaml ↔ Dataform 生成 yaml の drift
   - `tests/infra/test_terraform_module_structure.py` / `tests/infra/test_infra_ranker_tables.py` / `tests/infra/test_workflows_structure.py`
 - **CI composite actions**: `.github/actions/{setup-python-env,setup-gcp,build-and-push}/` (5 workflow で共有)
@@ -131,9 +131,10 @@ CI path filters (`app/**` / `jobs/**` / `definitions/**` / `infra/**`) は top-l
 - Phase 1–10d の実装 + scripts/tests 再編 + setting.yaml 集約が完了。California Housing 関連コード / Dataform / Python / Terraform / Scheduled Query は 10b/10c で完全削除済
 - `make check` 現行 194 tests (`tests/{arch,parity,infra}/` + workspace 別 `{app,jobs,common}/tests/`)。ただし `jobs/tests/test_rank_trainer.py` と `jobs/tests/test_rank_cli_run.py` の 4 件が FAIL 中 — `FEATURE_COLS_RANKER` に `semantic_rank` が入ったが trainer の fixture 側が追従していない (下記 残タスク 参照)
 - Port / pure-logic ファイルの境界は `scripts/checks/layers.py::RULES` が canonical。`tests/arch/test_import_boundaries.py` は薄い pytest ラッパで、`make check-layers` でも CLI 単独実行できる (`google.cloud.*` / `wandb` / 具象 adapter の直接 import を禁止)
-- feature parity invariant (5 ファイル) は自動検知:
+- feature parity invariant (6 ファイル) は自動検知:
   - `tests/parity/test_feature_parity_sql_ranker.py` — monitoring SQL の UNPIVOT ↔ `FEATURE_COLS_RANKER` (property-side 7 列)
   - `tests/parity/test_feature_parity_ranking.py` — Python `build_ranker_features` ↔ `schema.py` ↔ infra `ranking_log.features` RECORD + Dataform SQLX のビヘイビア列チェック
+  - `tests/parity/test_feature_parity_feature_group.py` — Vertex Feature Group (`google_vertex_ai_feature_group_feature` × 7) ↔ `FEATURE_COLS_RANKER` (property-side 7 列) の 1:1 対応
   - `tests/parity/test_dataform_workflow_settings.py` — `env/config/setting.yaml` ↔ `scripts.config.sync_dataform.render()` (生成器) drift 検知
 - Terraform モジュール構造 (`main.tf` / `variables.tf` / `outputs.tf` / `versions.tf` + 全 variable に description) は `tests/infra/test_terraform_module_structure.py` で検証
 - 初回 apply 時に踏みやすい 4 つのハマりは `infra/modules/` 側で全て修正済 (`time_sleep` / DTS の `location` / DTS の `service_account_name` / Cloud Run image placeholder)。詳細表は `docs/04_運用.md §1 STEP 9`
