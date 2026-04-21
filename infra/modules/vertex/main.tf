@@ -53,12 +53,12 @@ locals {
     ? var.reranker_endpoint_id
     : "projects/${var.project_id}/locations/${var.vertex_location}/endpoints/${var.reranker_endpoint_display_name}"
   )
-  pipeline_trigger_function_name = "pipeline-trigger"
-  pipeline_trigger_eventarc_name = "retrain-to-pipeline"
+  pipeline_trigger_function_name   = "pipeline-trigger"
+  pipeline_trigger_eventarc_name   = "retrain-to-pipeline"
   monitoring_trigger_eventarc_name = "monitoring-to-pipeline"
-  pubsub_service_agent = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
-  pipeline_template_uri = "gs://${var.pipeline_root_bucket_name}/templates/property-search-train.yaml"
-  pipeline_root_uri     = "gs://${var.pipeline_root_bucket_name}/runs"
+  pubsub_service_agent             = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+  pipeline_template_uri            = "gs://${var.pipeline_root_bucket_name}/templates/property-search-train.yaml"
+  pipeline_root_uri                = "gs://${var.pipeline_root_bucket_name}/runs"
 }
 
 data "google_project" "current" {
@@ -219,4 +219,84 @@ resource "google_eventarc_trigger" "monitoring_to_pipeline" {
     google_cloudfunctions2_function.pipeline_trigger,
     google_cloud_run_service_iam_member.pipeline_trigger_invoker,
   ]
+}
+
+# =========================================================================
+# Vertex AI Feature Group — offline wrapper over feature_mart.property_features_daily.
+#
+# Entity: property_id. Seven property-side features mirror FEATURE_COLS_RANKER
+# (parity test: tests/parity/test_feature_parity_feature_group.py).
+# Query-time signals (me5_score / lexical_rank / semantic_rank) stay outside
+# the Feature Group because they are computed per-request, not per-property.
+# =========================================================================
+
+resource "google_vertex_ai_feature_group" "property_features" {
+  count    = var.enable_feature_group ? 1 : 0
+  provider = google-beta
+
+  name        = "property_features"
+  region      = var.vertex_location
+  description = "Offline Feature Group wrapping feature_mart.property_features_daily"
+
+  big_query {
+    big_query_source {
+      input_uri = "bq://${var.project_id}.${var.feature_mart_dataset_id}.property_features_daily"
+    }
+    entity_id_columns = ["property_id"]
+  }
+}
+
+resource "google_vertex_ai_feature_group_feature" "property_features" {
+  for_each = var.enable_feature_group ? {
+    for feat in local.feature_group_property_features : feat.name => feat
+  } : {}
+
+  provider = google-beta
+
+  name          = each.value.name
+  region        = var.vertex_location
+  feature_group = google_vertex_ai_feature_group.property_features[0].name
+  description   = each.value.description
+}
+
+# =========================================================================
+# Vertex AI Endpoints — empty shells. Model deployment is handled by the
+# Python SDK (register_reranker KFP component + scripts/setup/create_*.py)
+# because traffic-split / deployed_model nesting in Terraform is immature.
+# =========================================================================
+
+resource "google_vertex_ai_endpoint" "encoder" {
+  count = var.enable_endpoints ? 1 : 0
+
+  name         = "property-encoder-endpoint"
+  display_name = var.encoder_endpoint_display_name
+  description  = "Vertex AI endpoint hosting the multilingual-e5-base encoder"
+  location     = var.vertex_location
+  project      = var.project_id
+}
+
+# Model deployments (aiplatform.Model.deploy) mutate the endpoints'
+# deployed_models / traffic_split server-side; the provider surfaces these as
+# computed fields so we leave them out of the managed resource entirely.
+
+resource "google_vertex_ai_endpoint" "reranker" {
+  count = var.enable_endpoints ? 1 : 0
+
+  name         = "property-reranker-endpoint"
+  display_name = var.reranker_endpoint_display_name
+  description  = "Vertex AI endpoint hosting the LightGBM LambdaRank reranker"
+  location     = var.vertex_location
+  project      = var.project_id
+}
+
+resource "google_storage_bucket_iam_member" "endpoint_encoder_models_reader" {
+  bucket = var.models_bucket_name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${var.service_accounts.endpoint_encoder.email}"
+}
+
+resource "google_storage_bucket_iam_member" "endpoint_reranker_models_reader" {
+  bucket = var.models_bucket_name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${var.service_accounts.endpoint_reranker.email}"
 }

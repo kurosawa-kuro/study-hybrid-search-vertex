@@ -1,15 +1,15 @@
 output "service_accounts" {
   description = "Map of runtime SA resources (use .email / .name / .id from caller)"
   value = {
-    api              = google_service_account.api
-    job_train        = google_service_account.job_train
-    job_embed        = google_service_account.job_embed
-    dataform         = google_service_account.dataform
-    scheduler        = google_service_account.scheduler
-    pipeline         = google_service_account.pipeline
-    endpoint_encoder = google_service_account.endpoint_encoder
+    api               = google_service_account.api
+    job_train         = google_service_account.job_train
+    job_embed         = google_service_account.job_embed
+    dataform          = google_service_account.dataform
+    scheduler         = google_service_account.scheduler
+    pipeline          = google_service_account.pipeline
+    endpoint_encoder  = google_service_account.endpoint_encoder
     endpoint_reranker = google_service_account.endpoint_reranker
-    pipeline_trigger = google_service_account.pipeline_trigger
+    pipeline_trigger  = google_service_account.pipeline_trigger
   }
 }
 

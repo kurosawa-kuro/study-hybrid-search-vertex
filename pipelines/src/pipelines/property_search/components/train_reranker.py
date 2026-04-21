@@ -24,11 +24,15 @@ def train_reranker(
         "experiment_name": experiment_name,
         "window_days": window_days,
     }
-    Path(model.path).write_text(json.dumps(model_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path(model.path).write_text(
+        json.dumps(model_payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
     metrics_payload = {
         "ndcg_at_10": 0.7,
         "map": 0.5,
         "recall_at_20": 0.8,
     }
-    Path(metrics.path).write_text(json.dumps(metrics_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path(metrics.path).write_text(
+        json.dumps(metrics_payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )

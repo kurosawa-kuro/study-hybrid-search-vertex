@@ -53,4 +53,6 @@ def load_features(
         "query": query,
     }
     training_frame.metadata.update(payload)
-    Path(training_frame.path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path(training_frame.path).write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )

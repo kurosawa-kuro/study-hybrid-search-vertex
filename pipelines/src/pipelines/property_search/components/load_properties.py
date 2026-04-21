@@ -37,4 +37,6 @@ def load_properties(
         "query": query,
     }
     selection.metadata.update(payload)
-    Path(selection.path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path(selection.path).write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )

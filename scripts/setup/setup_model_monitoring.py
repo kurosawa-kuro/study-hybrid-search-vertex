@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
-
 from typing import Any
 
 from scripts._common import env
-
 
 FEATURES = [
     "rent",
@@ -51,7 +49,6 @@ def main() -> int:
     parser.parse_args()
     print(json.dumps(build_monitoring_spec(), ensure_ascii=False, indent=2))
     return 0
-
 
 
 if __name__ == "__main__":

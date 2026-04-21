@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from pipelines.property_search.compile import _coerce_parameter_value, _merge_parameter_values, _spec
+from pipelines.property_search.compile import (
+    _coerce_parameter_value,
+    _merge_parameter_values,
+    _spec,
+)
 
 
 def test_build_embed_pipeline_spec_contains_expected_steps() -> None:

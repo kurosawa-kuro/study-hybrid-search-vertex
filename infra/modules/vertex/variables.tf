@@ -69,3 +69,20 @@ variable "retrain_trigger_topic_name" {
   description = "Pub/Sub topic name for retrain-trigger events emitted by search-api"
   type        = string
 }
+
+variable "models_bucket_name" {
+  description = "GCS bucket name hosting model artifacts read by Vertex endpoints"
+  type        = string
+}
+
+variable "enable_feature_group" {
+  description = "When true, declare the Vertex AI Feature Group wrapping feature_mart.property_features_daily"
+  type        = bool
+  default     = true
+}
+
+variable "enable_endpoints" {
+  description = "When true, declare the encoder + reranker Vertex AI Endpoints. Model deployment still happens via the Python SDK."
+  type        = bool
+  default     = true
+}

@@ -7,10 +7,9 @@ import tempfile
 from pathlib import Path
 
 import lightgbm as lgb
+from common.storage.gcs_artifact_store import download_file
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-
-from common.storage.gcs_artifact_store import download_file
 
 
 class RerankerRequest(BaseModel):
@@ -51,3 +50,18 @@ def predict(request: RerankerRequest) -> RerankerResponse:
         raise HTTPException(status_code=503, detail="booster not loaded")
     predictions = booster.predict(request.instances)
     return RerankerResponse(predictions=[float(value) for value in predictions])
+
+
+def main() -> None:
+    import uvicorn
+
+    uvicorn.run(
+        app,
+        host=os.getenv("HOST", "0.0.0.0"),
+        port=int(os.getenv("AIP_HTTP_PORT", os.getenv("PORT", "8080"))),
+        log_level=os.getenv("LOG_LEVEL", "info").lower(),
+    )
+
+
+if __name__ == "__main__":
+    main()

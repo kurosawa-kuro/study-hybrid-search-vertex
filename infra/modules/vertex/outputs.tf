@@ -42,3 +42,30 @@ output "monitoring_trigger_eventarc_name" {
   description = "Eventarc trigger name for monitoring-to-pipeline wiring"
   value       = google_eventarc_trigger.monitoring_to_pipeline.name
 }
+
+output "property_features_feature_group" {
+  description = "Vertex AI Feature Group wrapping property_features_daily (null when disabled)"
+  value = (
+    length(google_vertex_ai_feature_group.property_features) > 0
+    ? google_vertex_ai_feature_group.property_features[0]
+    : null
+  )
+}
+
+output "encoder_endpoint" {
+  description = "Vertex AI encoder endpoint resource (null when disabled)"
+  value = (
+    length(google_vertex_ai_endpoint.encoder) > 0
+    ? google_vertex_ai_endpoint.encoder[0]
+    : null
+  )
+}
+
+output "reranker_endpoint" {
+  description = "Vertex AI reranker endpoint resource (null when disabled)"
+  value = (
+    length(google_vertex_ai_endpoint.reranker) > 0
+    ? google_vertex_ai_endpoint.reranker[0]
+    : null
+  )
+}

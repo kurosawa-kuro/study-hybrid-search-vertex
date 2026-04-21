@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-
 DEFAULT_SPECS: dict[str, dict[str, object]] = {
     "embed": {
         "name": "property-search-embed",
@@ -150,7 +149,9 @@ def main() -> int:
         default=[],
         help="Override pipeline parameter values as key=value (repeatable)",
     )
-    parser.add_argument("--submit", action="store_true", help="Submit the compiled pipeline to Vertex AI")
+    parser.add_argument(
+        "--submit", action="store_true", help="Submit the compiled pipeline to Vertex AI"
+    )
     parser.add_argument("--project-id", default="mlops-dev-a")
     parser.add_argument("--location", default="asia-northeast1")
     parser.add_argument("--pipeline-root", default="gs://mlops-dev-a-pipeline-root/runs")
@@ -172,7 +173,9 @@ def main() -> int:
     if args.write_spec_json:
         spec_path = path.with_suffix(".json")
         spec_payload = _spec(args.target) | {"resolved_parameters": params}
-        spec_path.write_text(json.dumps(spec_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        spec_path.write_text(
+            json.dumps(spec_payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
     if args.submit:
         resource_name = _submit_pipeline(
             target=args.target,

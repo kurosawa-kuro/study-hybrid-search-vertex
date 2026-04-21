@@ -2,12 +2,20 @@
 
 from kfp import dsl
 
-from .components import evaluate_reranker, load_features, register_reranker, resolve_hyperparameters, train_reranker
+from .components import (
+    evaluate_reranker,
+    load_features,
+    register_reranker,
+    resolve_hyperparameters,
+    train_reranker,
+)
 
 PIPELINE_NAME = "property-search-train"
 
 
-@dsl.pipeline(name=PIPELINE_NAME, description="Reranker training / evaluation / registration pipeline")
+@dsl.pipeline(
+    name=PIPELINE_NAME, description="Reranker training / evaluation / registration pipeline"
+)
 def property_search_train_pipeline(
     project_id: str = "mlops-dev-a",
     vertex_location: str = "asia-northeast1",
@@ -96,7 +104,13 @@ def build_train_pipeline_spec() -> dict[str, object]:
             "gate_threshold": 0.6,
             "model_display_name": "property-reranker",
         },
-        "steps": ["load_features", "resolve_hyperparameters", "train_reranker", "evaluate", "register_reranker"],
+        "steps": [
+            "load_features",
+            "resolve_hyperparameters",
+            "train_reranker",
+            "evaluate",
+            "register_reranker",
+        ],
     }
 
 

@@ -31,4 +31,6 @@ def batch_predict_embeddings(
         },
     }
     predictions.metadata.update(payload)
-    Path(predictions.path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path(predictions.path).write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )

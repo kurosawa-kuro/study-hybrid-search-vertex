@@ -5,13 +5,11 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
-from typing import Any
-
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
 
 from common.embeddings.e5_encoder import E5Encoder
 from common.storage.gcs_artifact_store import GcsPrefix, download_file
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 
 
 class EncoderInstance(BaseModel):
@@ -87,3 +85,18 @@ def predict(request: EncoderRequest) -> EncoderResponse:
             results.append([float(v) for v in passage_vectors[passage_index]])
             passage_index += 1
     return EncoderResponse(predictions=results)
+
+
+def main() -> None:
+    import uvicorn
+
+    uvicorn.run(
+        app,
+        host=os.getenv("HOST", "0.0.0.0"),
+        port=int(os.getenv("AIP_HTTP_PORT", os.getenv("PORT", "8080"))),
+        log_level=os.getenv("LOG_LEVEL", "info").lower(),
+    )
+
+
+if __name__ == "__main__":
+    main()

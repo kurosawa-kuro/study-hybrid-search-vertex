@@ -6,30 +6,11 @@ import json
 from unittest.mock import MagicMock, patch
 
 from app.adapters import (
-    CloudRunJobRunner,
     PubSubPublisher,
     VertexEndpointEncoder,
     VertexEndpointReranker,
     create_retrain_queries,
 )
-
-
-def test_cloud_run_job_runner_starts_configured_job() -> None:
-    fake_client = MagicMock()
-    fake_client.run_job.return_value.metadata.name = (
-        "projects/p/locations/asia-northeast1/jobs/training-job/executions/abc"
-    )
-
-    with patch("google.cloud.run_v2.JobsClient", return_value=fake_client):
-        runner = CloudRunJobRunner(
-            project_id="p", region="asia-northeast1", job_name="training-job"
-        )
-        execution = runner.start()
-
-    fake_client.run_job.assert_called_once_with(
-        name="projects/p/locations/asia-northeast1/jobs/training-job"
-    )
-    assert execution == "projects/p/locations/asia-northeast1/jobs/training-job/executions/abc"
 
 
 def test_create_retrain_queries_wires_bigquery_client() -> None:

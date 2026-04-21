@@ -45,20 +45,21 @@ module "data" {
 module "vertex" {
   source = "./modules/vertex"
 
-  project_id                  = var.project_id
-  region                      = var.region
-  vertex_location             = var.vertex_location
-  service_accounts            = module.iam.service_accounts
-  mlops_dataset_id            = module.data.mlops_dataset.dataset_id
-  feature_mart_dataset_id     = module.data.feature_mart_dataset.dataset_id
-  pipeline_root_bucket_name   = module.data.pipeline_root_bucket.name
+  project_id                       = var.project_id
+  region                           = var.region
+  vertex_location                  = var.vertex_location
+  service_accounts                 = module.iam.service_accounts
+  mlops_dataset_id                 = module.data.mlops_dataset.dataset_id
+  feature_mart_dataset_id          = module.data.feature_mart_dataset.dataset_id
+  pipeline_root_bucket_name        = module.data.pipeline_root_bucket.name
+  models_bucket_name               = module.data.models_bucket.name
   model_monitoring_alerts_table_id = module.data.model_monitoring_alerts_table.table_id
-  encoder_endpoint_id         = var.vertex_encoder_endpoint_id
-  reranker_endpoint_id        = var.vertex_reranker_endpoint_id
-  encoder_endpoint_display_name  = "property-encoder-endpoint"
-  reranker_endpoint_display_name = "property-reranker-endpoint"
-  retrain_trigger_topic_id    = module.runtime.retrain_trigger_topic.id
-  retrain_trigger_topic_name  = module.runtime.retrain_trigger_topic.name
+  encoder_endpoint_id              = var.vertex_encoder_endpoint_id
+  reranker_endpoint_id             = var.vertex_reranker_endpoint_id
+  encoder_endpoint_display_name    = "property-encoder-endpoint"
+  reranker_endpoint_display_name   = "property-reranker-endpoint"
+  retrain_trigger_topic_id         = module.runtime.retrain_trigger_topic.id
+  retrain_trigger_topic_name       = module.runtime.retrain_trigger_topic.name
 
   depends_on = [
     google_project_service.enabled,
@@ -71,19 +72,19 @@ module "vertex" {
 module "runtime" {
   source = "./modules/runtime"
 
-  project_id              = var.project_id
-  region                  = var.region
-  artifact_repo_id        = var.artifact_repo_id
-  models_bucket_name      = module.data.models_bucket.name
-  mlops_dataset_id        = module.data.mlops_dataset.dataset_id
-  feature_mart_dataset_id = module.data.feature_mart_dataset.dataset_id
-  ranking_log_table_id    = module.data.ranking_log_table.table_id
-  feedback_events_table_id = module.data.feedback_events_table.table_id
-  service_accounts        = module.iam.service_accounts
-  meili_base_url          = module.meilisearch.meili_base_url
-  search_cache_ttl_seconds = var.search_cache_ttl_seconds
-  vertex_location         = var.vertex_location
-  vertex_encoder_endpoint_id = var.vertex_encoder_endpoint_id
+  project_id                  = var.project_id
+  region                      = var.region
+  artifact_repo_id            = var.artifact_repo_id
+  models_bucket_name          = module.data.models_bucket.name
+  mlops_dataset_id            = module.data.mlops_dataset.dataset_id
+  feature_mart_dataset_id     = module.data.feature_mart_dataset.dataset_id
+  ranking_log_table_id        = module.data.ranking_log_table.table_id
+  feedback_events_table_id    = module.data.feedback_events_table.table_id
+  service_accounts            = module.iam.service_accounts
+  meili_base_url              = module.meilisearch.meili_base_url
+  search_cache_ttl_seconds    = var.search_cache_ttl_seconds
+  vertex_location             = var.vertex_location
+  vertex_encoder_endpoint_id  = var.vertex_encoder_endpoint_id
   vertex_reranker_endpoint_id = var.vertex_reranker_endpoint_id
 
   depends_on = [
@@ -96,9 +97,9 @@ module "runtime" {
 module "meilisearch" {
   source = "./modules/meilisearch"
 
-  project_id            = var.project_id
-  region                = var.region
-  service_accounts      = module.iam.service_accounts
+  project_id             = var.project_id
+  region                 = var.region
+  service_accounts       = module.iam.service_accounts
   meili_data_bucket_name = var.meili_data_bucket_name
 
   depends_on = [google_project_service.enabled]

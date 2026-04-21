@@ -66,7 +66,10 @@ jobs:
 
       - name: Deploy to Cloud Run
         env:
-          STATIC_ENV: "PROJECT_ID=${{ env.PROJECT_ID }}|GCS_MODELS_BUCKET=mlops-dev-a-models|RANKING_LOG_TOPIC=ranking-log|FEEDBACK_TOPIC=search-feedback|RETRAIN_TOPIC=retrain-trigger|LOG_AS_JSON=1|GCP_LOGGING_ENABLED=1"
+          # VERTEX_* envs are supplied by GitHub Actions repository variables so
+          # deployments can point at the right Endpoint ID after Phase 3 / 6
+          # create the resources via the Python SDK.
+          STATIC_ENV: "PROJECT_ID=${{ env.PROJECT_ID }}|RANKING_LOG_TOPIC=ranking-log|FEEDBACK_TOPIC=search-feedback|RETRAIN_TOPIC=retrain-trigger|LOG_AS_JSON=1|GCP_LOGGING_ENABLED=1|VERTEX_LOCATION=${{ vars.VERTEX_LOCATION }}|VERTEX_ENCODER_ENDPOINT_ID=${{ vars.VERTEX_ENCODER_ENDPOINT_ID }}|VERTEX_RERANKER_ENDPOINT_ID=${{ vars.VERTEX_RERANKER_ENDPOINT_ID }}|ENABLE_RERANK=true"
           DOPPLER_ENV: ${{ steps.doppler.outputs.vars }}
         run: |
           # gcloud `^|^` prefix lets us use `|` as the delimiter between KEY=value
@@ -79,7 +82,7 @@ jobs:
             --region ${{ env.REGION }} \
             --image "${{ steps.build.outputs.image_uri }}" \
             --service-account sa-api@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
-            --cpu 2 --memory 4Gi \
+            --cpu 2 --memory 2Gi \
             --concurrency 80 \
             --min-instances 1 --max-instances 10 \
             --cpu-boost \

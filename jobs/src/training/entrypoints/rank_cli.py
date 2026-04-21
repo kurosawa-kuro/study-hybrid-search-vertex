@@ -103,6 +103,7 @@ def _synthetic_ranking_frames(
             inquiry_rate = float(rng.uniform(0, 0.03))
             me5_score = float(rng.uniform(0.3, 1.0))
             lexical_rank = float(rank + 1)
+            semantic_rank = float(rng.integers(1, candidates_per_query + 1))
             score = me5_score * 3 + ctr * 10 + rng.normal(0, 0.4)
             if score > 2.5:
                 label = 3
@@ -124,6 +125,7 @@ def _synthetic_ranking_frames(
                     "inquiry_rate": inquiry_rate,
                     "me5_score": me5_score,
                     "lexical_rank": lexical_rank,
+                    "semantic_rank": semantic_rank,
                     RANKER_LABEL_COL: label,
                 }
             )

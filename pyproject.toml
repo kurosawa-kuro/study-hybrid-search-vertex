@@ -1,7 +1,7 @@
 [project]
-name = "study-gcp-mlops-bq-first"
+name = "study-hybrid-search-vertex"
 version = "0.1.0"
-description = "bq-first MLOps pipeline (California Housing × LightGBM)"
+description = "Hybrid search (Meilisearch BM25 + BigQuery VECTOR_SEARCH + RRF) with LightGBM LambdaRank rerank, migrating to Vertex AI"
 requires-python = ">=3.12"
 
 [tool.uv.workspace]

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
 from training.adapters.bigquery_ranker_repository import BigQueryRankerRepository
 
 
@@ -102,7 +103,6 @@ def test_save_run_raises_on_insert_errors() -> None:
     client.insert_rows_json.return_value = [{"errors": [{"reason": "invalid"}]}]
     repo = _make_repo(client)
     started = datetime(2026, 4, 20, 10, tzinfo=timezone.utc)
-    import pytest
 
     with pytest.raises(RuntimeError, match="insert_rows_json failed"):
         repo.save_run(
@@ -127,3 +127,60 @@ def test_latest_model_path_returns_model_path() -> None:
         [{"model_path": "gs://bkt/lgbm/2026-04-20/r1/model.txt"}]
     )
     assert _make_repo(client).latest_model_path() == "gs://bkt/lgbm/2026-04-20/r1/model.txt"
+
+
+def test_save_run_dual_writes_to_vertex_experiments(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VERTEX_EXPERIMENT_NAME", "property-reranker-lgbm")
+    client = MagicMock()
+    client.insert_rows_json.return_value = []
+    repo = _make_repo(client)
+    started = datetime(2026, 4, 21, 10, tzinfo=timezone.utc)
+    finished = datetime(2026, 4, 21, 10, 15, tzinfo=timezone.utc)
+
+    fake_aiplatform = MagicMock()
+    fake_aiplatform.start_run.return_value.__enter__.return_value = MagicMock()
+    fake_aiplatform.start_run.return_value.__exit__.return_value = None
+    with patch.dict(
+        "sys.modules",
+        {
+            "google.cloud.aiplatform": fake_aiplatform,
+            "google.cloud": MagicMock(aiplatform=fake_aiplatform),
+        },
+    ):
+        repo.save_run(
+            run_id="20260421T100000Z-deadbeef",
+            started_at=started,
+            finished_at=finished,
+            model_path="gs://bkt/lgbm/2026-04-21/20260421T100000Z-deadbeef/model.txt",
+            metrics={"ndcg_at_10": 0.81, "map": 0.4, "recall_at_20": 0.7, "best_iteration": 150},
+            hyperparams={"num_leaves": 31, "learning_rate": 0.05},
+        )
+
+    fake_aiplatform.init.assert_called_once()
+    fake_aiplatform.start_run.assert_called_once()
+    assert fake_aiplatform.log_params.call_args.args[0] == {"num_leaves": 31, "learning_rate": 0.05}
+    metrics_arg = fake_aiplatform.log_metrics.call_args.args[0]
+    assert metrics_arg["ndcg_at_10"] == 0.81
+    client.insert_rows_json.assert_called_once()
+
+
+def test_save_run_skips_vertex_experiments_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("VERTEX_EXPERIMENT_NAME", raising=False)
+    client = MagicMock()
+    client.insert_rows_json.return_value = []
+    repo = _make_repo(client)
+    started = datetime(2026, 4, 21, 10, tzinfo=timezone.utc)
+
+    fake_aiplatform = MagicMock()
+    with patch.dict("sys.modules", {"google.cloud.aiplatform": fake_aiplatform}):
+        repo.save_run(
+            run_id="r",
+            started_at=started,
+            finished_at=started,
+            model_path="gs://bkt/lgbm/2026-04-21/r/model.txt",
+            metrics={"ndcg_at_10": 0.8},
+            hyperparams={"num_leaves": 31},
+        )
+
+    fake_aiplatform.init.assert_not_called()
+    fake_aiplatform.start_run.assert_not_called()

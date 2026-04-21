@@ -1,4 +1,4 @@
-# study-gcp-mlops-bq-first
+# study-hybrid-search-vertex
 
 BigQuery + Cloud Run に閉じた軽量 MLOps パイプライン — **不動産ハイブリッド検索 × LightGBM LambdaRank**。Meilisearch (lexical) + BigQuery VECTOR_SEARCH (semantic) + RRF fusion を採用し、キャッシュは `cachetools.TTLCache` の in-memory 構成で運用する `bq-first`。
 

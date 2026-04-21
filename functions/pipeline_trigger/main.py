@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
 
+
 def _env(name: str) -> str:
     value = os.getenv(name, "").strip()
     if not value:
@@ -84,7 +85,9 @@ def _build_job_id(prefix: str) -> str:
     return f"{prefix}-{timestamp}-{suffix}"
 
 
-def trigger_pipeline(event: Mapping[str, Any] | None = None, context: Any | None = None) -> dict[str, Any]:
+def trigger_pipeline(
+    event: Mapping[str, Any] | None = None, context: Any | None = None
+) -> dict[str, Any]:
     del context
 
     from google.cloud import aiplatform
@@ -121,5 +124,7 @@ def trigger_pipeline(event: Mapping[str, Any] | None = None, context: Any | None
     }
 
 
-def submit_pipeline(event: Mapping[str, Any] | None = None, context: Any | None = None) -> dict[str, Any]:
+def submit_pipeline(
+    event: Mapping[str, Any] | None = None, context: Any | None = None
+) -> dict[str, Any]:
     return trigger_pipeline(event=event, context=context)

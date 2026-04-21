@@ -17,7 +17,9 @@ def build_promotion_plan(model_kind: str, version_alias: str) -> dict[str, str]:
         "VERTEX_RERANKER_ENDPOINT_ID" if model_kind == "reranker" else "VERTEX_ENCODER_ENDPOINT_ID"
     )
     display_name = env(
-        "RERANKER_ENDPOINT_DISPLAY_NAME" if model_kind == "reranker" else "ENCODER_ENDPOINT_DISPLAY_NAME",
+        "RERANKER_ENDPOINT_DISPLAY_NAME"
+        if model_kind == "reranker"
+        else "ENCODER_ENDPOINT_DISPLAY_NAME",
         "property-reranker" if model_kind == "reranker" else "property-encoder",
     )
     return {
@@ -63,7 +65,9 @@ def main() -> int:
         traffic_percentage=100,
         sync=True,
     )
-    print(json.dumps({"promoted_model": matched.resource_name, **plan}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps({"promoted_model": matched.resource_name, **plan}, ensure_ascii=False, indent=2)
+    )
     return 0
 
 

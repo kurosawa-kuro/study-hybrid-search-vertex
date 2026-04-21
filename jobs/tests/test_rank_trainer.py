@@ -34,6 +34,7 @@ def _synthetic_frame(n_queries: int = 10, per_query: int = 8, seed: int = 1) -> 
                     "inquiry_rate": float(rng.uniform(0, 0.02)),
                     "me5_score": me5,
                     "lexical_rank": float(r + 1),
+                    "semantic_rank": float(rng.integers(1, per_query + 1)),
                     "label": label,
                 }
             )

@@ -47,8 +47,8 @@ resource "google_logging_metric" "api_p95_latency" {
 }
 
 # =========================================================================
-# Notification channel — oncall@example.com placeholder
-# Replace email with your oncall address (or front with PagerDuty).
+# Notification channel — email supplied via var.oncall_email
+# (env/config/setting.yaml::oncall_email, forwardable to PagerDuty).
 # =========================================================================
 
 resource "google_monitoring_notification_channel" "email" {

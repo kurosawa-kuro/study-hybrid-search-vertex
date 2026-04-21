@@ -13,7 +13,7 @@ members = [
     "common",
     "jobs",
     "pipelines",
-    "study-gcp-mlops-bq-first",
+    "study-hybrid-search-vertex",
 ]
 
 [[package]]
@@ -2550,7 +2550,7 @@ wheels = [
 ]
 
 [[package]]
-name = "study-gcp-mlops-bq-first"
+name = "study-hybrid-search-vertex"
 version = "0.1.0"
 source = { virtual = "." }
 

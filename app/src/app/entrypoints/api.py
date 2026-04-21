@@ -20,7 +20,6 @@ from common import get_logger
 
 from ..adapters import (
     BigQueryCandidateRetriever,
-    CloudRunJobRunner,
     InMemoryTTLCacheStore,
     MeilisearchLexical,
     NoopCacheStore,
@@ -44,7 +43,6 @@ from ..ports import (
     PredictionPublisher,
     RankingLogPublisher,
     RerankerClient,
-    TrainingJobRunner,
 )
 from ..schemas import (
     FeedbackRequest,
@@ -171,11 +169,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.retrain_queries = create_retrain_queries(
         project_id=settings.project_id,
         training_runs_table=training_runs_table,
-    )
-    app.state.training_job_runner = CloudRunJobRunner(
-        project_id=settings.project_id,
-        region=settings.region,
-        job_name="training-job",
     )
 
     if settings.enable_search:
@@ -344,16 +337,6 @@ def create_app() -> FastAPI:
                     get_logger("app").exception("Failed to publish retrain-trigger")
                     response["published"] = False
         return JSONResponse(response)
-
-    @app.post("/events/retrain")
-    def events_retrain(request: Request) -> JSONResponse:
-        """Eventarc target — receives CloudEvents from retrain-trigger topic,
-        then starts the Cloud Run Job `training-job`.
-        """
-        runner: TrainingJobRunner = request.app.state.training_job_runner
-        execution = runner.start()
-        get_logger("app").info("Kicked training-job: %s", execution)
-        return JSONResponse({"execution": execution})
 
     return app
 

@@ -22,9 +22,7 @@ SQL_PATH = REPO_ROOT / "monitoring" / "validate_feature_skew.sql"
 
 # 7 property-side columns monitored via UNPIVOT (order must match SQL).
 PROPERTY_SIDE_COLS: list[str] = [
-    c
-    for c in FEATURE_COLS_RANKER
-    if c not in {"me5_score", "lexical_rank", "semantic_rank"}
+    c for c in FEATURE_COLS_RANKER if c not in {"me5_score", "lexical_rank", "semantic_rank"}
 ]
 
 _UNPIVOT_RE = re.compile(

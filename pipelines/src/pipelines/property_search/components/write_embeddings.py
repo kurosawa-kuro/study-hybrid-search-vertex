@@ -35,4 +35,6 @@ def write_embeddings(
         "merge_sql": merge_sql,
     }
     merge_manifest.metadata.update(payload)
-    Path(merge_manifest.path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path(merge_manifest.path).write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )

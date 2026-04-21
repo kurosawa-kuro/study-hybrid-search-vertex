@@ -12,8 +12,8 @@ followed by ``lexical_rank`` so LightGBM group sizes line up directly.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import os
+from datetime import datetime, timezone
 
 import pandas as pd
 from common.logging import get_logger
